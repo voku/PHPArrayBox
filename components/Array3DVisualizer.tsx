@@ -99,33 +99,30 @@ const getGradientColor = (baseColor: string, depth: number, index: number, total
 const useCobblestoneTexture = () => {
   return useMemo(() => {
     const canvas = document.createElement('canvas');
-    canvas.width = 512; canvas.height = 512;
+    canvas.width = 256; canvas.height = 256;
     const ctx = canvas.getContext('2d');
     if (ctx) {
         ctx.fillStyle = '#a8a29e'; 
-        ctx.fillRect(0,0,512,512);
+        ctx.fillRect(0, 0, 256, 256);
         
-        ctx.strokeStyle = '#9ca3af'; // Lighter stroke
+        ctx.strokeStyle = '#9ca3af';
         ctx.lineWidth = 1;
         
-        const rows = 16;
-        const cols = 16;
-        const cellW = 512/cols;
-        const cellH = 512/rows;
+        const rows = 8;
+        const cols = 8;
+        const cellW = 256/cols;
+        const cellH = 256/rows;
 
         for(let y=0; y<rows; y++) {
             for(let x=0; x<cols; x++) {
-                const offsetX = (Math.random() - 0.5) * 8;
-                const offsetY = (Math.random() - 0.5) * 8;
-                const sizeMod = (Math.random() * 0.3) + 0.7;
+                // Fixed positioning to prevent flicker - no random offsets
+                const px = x * cellW + 4;
+                const py = y * cellH + 4;
+                const w = cellW - 8;
+                const h = cellH - 8;
                 
-                const px = x * cellW + 4 + offsetX;
-                const py = y * cellH + 4 + offsetY;
-                const w = (cellW - 8) * sizeMod;
-                const h = (cellH - 8) * sizeMod;
-                
-                // Reduced contrast to prevent flickering
-                ctx.fillStyle = Math.random() > 0.5 ? '#d1d5db' : '#e5e7eb'; 
+                // Very subtle, consistent pattern
+                ctx.fillStyle = (x + y) % 2 === 0 ? '#c4c4c4' : '#d1d5db'; 
                 ctx.fillRect(px, py, w, h);
                 ctx.strokeRect(px, py, w, h);
             }
@@ -135,8 +132,11 @@ const useCobblestoneTexture = () => {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(2, 2);
-    // Anisotropy helps with texture aliasing at oblique angles
-    tex.anisotropy = 4;
+    // Better filtering to prevent aliasing
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = 16;
+    tex.generateMipmaps = true;
     return tex;
   }, []);
 };
@@ -203,29 +203,35 @@ const useFacadeTexture = () => {
 const useGrassTexture = () => {
   return useMemo(() => {
       const canvas = document.createElement('canvas');
-      canvas.width = 512; canvas.height = 512;
+      canvas.width = 256; canvas.height = 256;
       const ctx = canvas.getContext('2d');
       if (ctx) {
+          // Solid base color - no noise to prevent flickering
           ctx.fillStyle = '#dcfce7'; 
-          ctx.fillRect(0, 0, 512, 512);
+          ctx.fillRect(0, 0, 256, 256);
           
-          // Noise - REDUCED CONTRAST to fix shimmering
-          for(let i=0; i<3000; i++) {
-              // Very subtle difference between base and noise color
-              ctx.fillStyle = Math.random() > 0.5 ? '#bbf7d0' : '#d1fae5';
-              const x = Math.random() * 512;
-              const y = Math.random() * 512;
-              const r = Math.random() * 4;
-              ctx.beginPath();
-              ctx.arc(x, y, r, 0, Math.PI*2);
-              ctx.fill();
+          // Very subtle, low-frequency pattern instead of noise
+          // Using larger blocks to avoid aliasing issues
+          const blockSize = 32;
+          for(let y = 0; y < 256; y += blockSize) {
+              for(let x = 0; x < 256; x += blockSize) {
+                  // Extremely subtle color variation
+                  if ((x + y) % (blockSize * 2) === 0) {
+                      ctx.fillStyle = 'rgba(187, 247, 208, 0.15)';
+                      ctx.fillRect(x, y, blockSize, blockSize);
+                  }
+              }
           }
       }
       const tex = new THREE.CanvasTexture(canvas);
       tex.wrapS = THREE.RepeatWrapping;
       tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(4, 4);
-      tex.anisotropy = 4;
+      tex.repeat.set(2, 2);
+      // Better filtering to prevent aliasing
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.anisotropy = 16;
+      tex.generateMipmaps = true;
       return tex;
   }, []);
 };
