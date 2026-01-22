@@ -1,0 +1,5 @@
+{
+  "name": "Array Box Lab",
+  "description": "An interactive visualization tool for PHP developers to identify when array structures become too complex and should be refactored into Objects/DTOs. Features real-time PHP code generation and a dynamic 'Code Smell' meter.",
+  "requestFramePermissions": []
+}
