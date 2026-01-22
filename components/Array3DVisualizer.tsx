@@ -206,20 +206,9 @@ const useGrassTexture = () => {
       canvas.width = 512; canvas.height = 512;
       const ctx = canvas.getContext('2d');
       if (ctx) {
+          // Solid color to prevent flickering - no noise/texture
           ctx.fillStyle = '#dcfce7'; 
           ctx.fillRect(0, 0, 512, 512);
-          
-          // Noise - REDUCED CONTRAST to fix shimmering
-          for(let i=0; i<3000; i++) {
-              // Very subtle difference between base and noise color
-              ctx.fillStyle = Math.random() > 0.5 ? '#bbf7d0' : '#d1fae5';
-              const x = Math.random() * 512;
-              const y = Math.random() * 512;
-              const r = Math.random() * 4;
-              ctx.beginPath();
-              ctx.arc(x, y, r, 0, Math.PI*2);
-              ctx.fill();
-          }
       }
       const tex = new THREE.CanvasTexture(canvas);
       tex.wrapS = THREE.RepeatWrapping;
