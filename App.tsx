@@ -64,7 +64,7 @@ const App: React.FC = () => {
                 ))}
              </div>
              
-             <a href="https://github.com/google/genai" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-slate-900 transition-colors ml-2">
+             <a href="https://github.com/voku/PHPArrayBox" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-slate-900 transition-colors ml-2" title="Contribute on GitHub">
                 <Github size={20} />
              </a>
           </div>
