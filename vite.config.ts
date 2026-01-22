@@ -3,6 +3,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  // Use relative paths for maximum compatibility with GitHub Pages
+  // This works for both root domain and subdirectory deployments
   base: './',
   server: {
     port: 3000,
