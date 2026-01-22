@@ -8,7 +8,8 @@ import {
     Bounds, 
     useBounds,
     Sky,
-    Stars
+    Stars,
+    BakeShadows
 } from '@react-three/drei';
 import * as THREE from 'three';
 import { ArrayNode } from '../types';
@@ -73,6 +74,23 @@ const varyColor = (baseColor: string, index: number, total: number) => {
     // Darken down the list for a gradient effect
     const offset = (index / total) * 0.25; 
     c.offsetHSL(0, 0, -offset); 
+    return `#${c.getHexString()}`;
+};
+
+/**
+ * Get a gradient color for districts based on nesting depth and sibling index
+ * This creates beautiful gradient map effects that distinguish array structure
+ */
+const getGradientColor = (baseColor: string, depth: number, index: number, totalSiblings: number): string => {
+    const c = new THREE.Color(baseColor);
+    
+    // Shift hue based on depth (0.05 per level for subtle variation)
+    const hueShift = (depth % 3) * 0.05;
+    
+    // Shift lightness based on sibling index for gradient effect
+    const lightnessShift = totalSiblings > 1 ? -(index / totalSiblings) * 0.2 : 0;
+    
+    c.offsetHSL(hueShift, 0, lightnessShift);
     return `#${c.getHexString()}`;
 };
 
@@ -256,7 +274,7 @@ const calculateLayout = (
   else if (type === 'district') {
       const colorIdx = node.key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
       const baseDistColor = CONFIG.colors.district[colorIdx % CONFIG.colors.district.length];
-      color = varyColor(baseDistColor, depth, 5);
+      color = getGradientColor(baseDistColor, depth, index, totalSiblings);
   }
 
   let childrenBlocks: CityBlock[] = [];
@@ -316,9 +334,9 @@ const Roads: React.FC<{ layout: NonNullable<CityBlock['layout']> }> = ({ layout 
     const cobbleTex = useCobblestoneTexture();
     const streets = [];
     
-    // Increased Y offset to 0.15 to prevent Z-fighting with the district base
-    // This effectively places roads comfortably "on top" of the base
-    const ROAD_Y_OFFSET = 0.15;
+    // Strict vertical layering: District Ground (y=0) -> Roads (y=0.1) -> Buildings (y=0.15)
+    // This prevents Z-fighting between surfaces
+    const ROAD_Y_OFFSET = 0.1;
     
     // Vertical Streets
     for (let c = 0; c <= cols; c++) {
@@ -363,9 +381,12 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
     const w = block.width * 0.85;
     const d = block.depth * 0.85;
     const h = block.height;
+    
+    // Buildings start at y=0.15 to sit on top of roads (which are at y=0.1)
+    const BUILDING_Y_BASE = 0.15;
 
     return (
-        <group position={[block.x, 0, block.z]}>
+        <group position={[block.x, BUILDING_Y_BASE, block.z]}>
             <mesh
                 position={[0, h / 2, 0]}
                 onPointerOver={(e) => { e.stopPropagation(); setHover(true); }}
@@ -434,25 +455,26 @@ const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
     return (
         <group position={[block.x, 0, block.z]}>
             {block.children.length > 0 && (
-                <group position={[0, block.height/2, 0]}>
-                     <mesh receiveShadow castShadow>
+                <group position={[0, 0, 0]}>
+                     {/* District ground plane at y=0 with colored gradient */}
+                     <mesh position={[0, 0, 0]} receiveShadow castShadow>
                         <boxGeometry args={[block.width, block.height, block.depth]} />
                         <meshStandardMaterial 
-                            color={isNight ? '#1e293b' : '#e5e7eb'}
+                            color={block.color}
                             roughness={0.9}
                         />
                      </mesh>
                      {block.layout && (
-                         <group position={[0, block.height/2, 0]}>
+                         <group>
                              <Roads layout={block.layout} />
                          </group>
                      )}
-                     <group position={[-block.width/2 + 0.5, block.height/2 + 0.1, -block.depth/2 + 0.5]}>
+                     <group position={[-block.width/2 + 0.5, block.height + 0.01, -block.depth/2 + 0.5]}>
                         <Text
                             rotation={[-Math.PI/2, 0, 0]}
                             position={[0, 0, 0]}
                             fontSize={Math.min(block.width, block.depth) * 0.08}
-                            color={block.color}
+                            color={isNight ? '#ffffff' : '#000000'}
                             anchorX="left"
                             anchorY="top"
                             font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
@@ -545,7 +567,8 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
     <div className="w-full h-full relative bg-stone-200 group overflow-hidden rounded-xl border border-stone-300">
         <Canvas shadows dpr={[1, 2]} camera={{ position: [80, 80, 80], fov: 30 }}>
             <color attach="background" args={[isNight ? '#020617' : '#bae6fd']} />
-            <fog attach="fog" args={[isNight ? '#020617' : '#bae6fd', 100, 400]} />
+            {/* Reduced fog: pushed back start distance for crisp, vibrant city */}
+            <fog attach="fog" args={[isNight ? '#020617' : '#bae6fd', 200, 500]} />
             
             <ambientLight intensity={isNight ? 0.2 : 0.6} />
             <directionalLight 
@@ -553,8 +576,8 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
                 intensity={isNight ? 0.2 : 1.3} 
                 castShadow 
                 shadow-mapSize={[2048, 2048]}
-                shadow-bias={-0.001}
-                shadow-normalBias={0.05} 
+                shadow-bias={-0.0005}
+                shadow-normalBias={0.02} 
             >
                  <orthographicCamera attach="shadow-camera" args={[-150, 150, -150, 150]} />
             </directionalLight>
@@ -578,13 +601,19 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
 
             <Ocean isNight={isNight} />
             
+            {/* Improved navigation controls */}
             <OrbitControls 
                 makeDefault 
                 minPolarAngle={0} 
                 maxPolarAngle={Math.PI / 2.2} 
+                minDistance={20}
+                maxDistance={300}
                 dampingFactor={0.1}
                 rotateSpeed={0.5}
             />
+            
+            {/* BakeShadows for better performance */}
+            <BakeShadows />
         </Canvas>
 
         {/* HUD UI */}
