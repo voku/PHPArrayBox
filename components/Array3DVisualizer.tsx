@@ -206,22 +206,10 @@ const useGrassTexture = () => {
       canvas.width = 256; canvas.height = 256;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-          // Solid base color - no noise to prevent flickering
+          // Solid color only - prevents texture aliasing during camera movement
+          // Removed all patterns/noise to eliminate flickering artifacts
           ctx.fillStyle = '#dcfce7'; 
           ctx.fillRect(0, 0, 256, 256);
-          
-          // Very subtle, low-frequency pattern instead of noise
-          // Using larger blocks to avoid aliasing issues
-          const blockSize = 32;
-          for(let y = 0; y < 256; y += blockSize) {
-              for(let x = 0; x < 256; x += blockSize) {
-                  // Extremely subtle color variation
-                  if ((x + y) % (blockSize * 2) === 0) {
-                      ctx.fillStyle = 'rgba(187, 247, 208, 0.15)';
-                      ctx.fillRect(x, y, blockSize, blockSize);
-                  }
-              }
-          }
       }
       const tex = new THREE.CanvasTexture(canvas);
       tex.wrapS = THREE.RepeatWrapping;
@@ -530,7 +518,8 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
     const ref = useRef<THREE.Mesh>(null);
     useFrame((state) => {
         if (ref.current) {
-            ref.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.1) * 0.05;
+            // Smoother, slower animation to reduce flickering
+            ref.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.05) * 0.02;
         }
     });
 
@@ -610,11 +599,12 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
             {/* Improved navigation controls */}
             <OrbitControls 
                 makeDefault 
+                enableDamping
                 minPolarAngle={0} 
                 maxPolarAngle={Math.PI / 2.2} 
                 minDistance={20}
                 maxDistance={300}
-                dampingFactor={0.1}
+                dampingFactor={0.05}
                 rotateSpeed={0.5}
             />
             
