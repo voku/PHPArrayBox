@@ -96,47 +96,38 @@ const getGradientColor = (baseColor: string, depth: number, index: number, total
 
 // --- Procedural Assets ---
 
+// Seeded random function for consistent, flicker-free texture generation
+const seededRandom = (seed: number) => {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+};
+
 const useCobblestoneTexture = () => {
   return useMemo(() => {
     const canvas = document.createElement('canvas');
-    canvas.width = 256; canvas.height = 256;
+    canvas.width = 256;
+    canvas.height = 256;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-        ctx.fillStyle = '#a8a29e'; 
+        ctx.fillStyle = '#8b7d6b';
         ctx.fillRect(0, 0, 256, 256);
         
-        ctx.strokeStyle = '#9ca3af';
-        ctx.lineWidth = 1;
-        
-        const rows = 8;
-        const cols = 8;
-        const cellW = 256/cols;
-        const cellH = 256/rows;
-
-        for(let y=0; y<rows; y++) {
-            for(let x=0; x<cols; x++) {
-                // Fixed positioning to prevent flicker - no random offsets
-                const px = x * cellW + 4;
-                const py = y * cellH + 4;
-                const w = cellW - 8;
-                const h = cellH - 8;
-                
-                // Very subtle, consistent pattern
-                ctx.fillStyle = (x + y) % 2 === 0 ? '#c4c4c4' : '#d1d5db'; 
-                ctx.fillRect(px, py, w, h);
-                ctx.strokeRect(px, py, w, h);
-            }
+        for (let i = 0; i < 600; i++) {
+            const x = Math.floor(seededRandom(i * 7) * 256);
+            const y = Math.floor(seededRandom(i * 11) * 256);
+            const shade = seededRandom(i * 13) > 0.5 ? '#6b6356' : '#9c8d7b';
+            ctx.fillStyle = shade;
+            ctx.fillRect(x, y, 2, 2);
         }
     }
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(2, 2);
-    // Better filtering to prevent aliasing
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.repeat.set(1, 1);
+    tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
-    tex.anisotropy = 16;
-    tex.generateMipmaps = true;
+    tex.generateMipmaps = false;
+    tex.anisotropy = 1;
     return tex;
   }, []);
 };
@@ -203,23 +194,31 @@ const useFacadeTexture = () => {
 const useGrassTexture = () => {
   return useMemo(() => {
       const canvas = document.createElement('canvas');
-      canvas.width = 256; canvas.height = 256;
+      canvas.width = 512;
+      canvas.height = 512;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-          // Solid color only - prevents texture aliasing during camera movement
-          // Removed all patterns/noise to eliminate flickering artifacts
-          ctx.fillStyle = '#dcfce7'; 
-          ctx.fillRect(0, 0, 256, 256);
+          // Base vibrant Anno green
+          ctx.fillStyle = '#5ca904';
+          ctx.fillRect(0, 0, 512, 512);
+          
+          // Static seeded texture
+          for (let i = 0; i < 2000; i++) {
+              const x = Math.floor(seededRandom(i * 2) * 512);
+              const y = Math.floor(seededRandom(i * 3) * 512);
+              const shade = seededRandom(i * 5) > 0.5 ? '#4a8803' : '#6eb905';
+              ctx.fillStyle = shade;
+              ctx.fillRect(x, y, 2, 2);
+          }
       }
       const tex = new THREE.CanvasTexture(canvas);
       tex.wrapS = THREE.RepeatWrapping;
       tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(2, 2);
-      // Better filtering to prevent aliasing
-      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.repeat.set(4, 4);
+      tex.minFilter = THREE.LinearFilter;
       tex.magFilter = THREE.LinearFilter;
-      tex.anisotropy = 16;
-      tex.generateMipmaps = true;
+      tex.generateMipmaps = false;
+      tex.anisotropy = 1;
       return tex;
   }, []);
 };
@@ -518,20 +517,19 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
     const ref = useRef<THREE.Mesh>(null);
     useFrame((state) => {
         if (ref.current) {
-            // Smoother, slower animation to reduce flickering
-            ref.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.05) * 0.02;
+            ref.current.position.y = -1.5 + Math.sin(state.clock.elapsedTime * 0.2) * 0.05;
         }
     });
 
     return (
         <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.5, 0]} receiveShadow>
-            <planeGeometry args={[10000, 10000]} />
+            <planeGeometry args={[10000, 10000, 1, 1]} />
             <meshStandardMaterial 
-                color={isNight ? CONFIG.colors.oceanNight : CONFIG.colors.ocean} 
-                roughness={0.2}
-                metalness={0.1}
+                color={isNight ? '#0c4a6e' : '#2c7da0'}
+                roughness={0.3}
+                metalness={0.2}
                 transparent
-                opacity={0.8}
+                opacity={0.85}
             />
         </mesh>
     );
