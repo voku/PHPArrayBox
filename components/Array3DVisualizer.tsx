@@ -206,22 +206,10 @@ const useGrassTexture = () => {
       canvas.width = 256; canvas.height = 256;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-          // Solid base color - no noise to prevent flickering
+          // Solid color only - prevents texture aliasing during camera movement
+          // Removed all patterns/noise to eliminate flickering artifacts
           ctx.fillStyle = '#dcfce7'; 
           ctx.fillRect(0, 0, 256, 256);
-          
-          // Very subtle, low-frequency pattern instead of noise
-          // Using larger blocks to avoid aliasing issues
-          const blockSize = 32;
-          for(let y = 0; y < 256; y += blockSize) {
-              for(let x = 0; x < 256; x += blockSize) {
-                  // Extremely subtle color variation
-                  if ((x + y) % (blockSize * 2) === 0) {
-                      ctx.fillStyle = 'rgba(187, 247, 208, 0.15)';
-                      ctx.fillRect(x, y, blockSize, blockSize);
-                  }
-              }
-          }
       }
       const tex = new THREE.CanvasTexture(canvas);
       tex.wrapS = THREE.RepeatWrapping;
