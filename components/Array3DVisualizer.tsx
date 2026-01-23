@@ -96,6 +96,12 @@ const getGradientColor = (baseColor: string, depth: number, index: number, total
 
 // --- Procedural Assets ---
 
+// Seeded random function for consistent, flicker-free texture generation
+const seededRandom = (seed: number) => {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+};
+
 const useCobblestoneTexture = () => {
   return useMemo(() => {
     const canvas = document.createElement('canvas');
@@ -105,11 +111,6 @@ const useCobblestoneTexture = () => {
     if (ctx) {
         ctx.fillStyle = '#8b7d6b';
         ctx.fillRect(0, 0, 256, 256);
-        
-        const seededRandom = (seed: number) => {
-            const x = Math.sin(seed) * 10000;
-            return x - Math.floor(x);
-        };
         
         for (let i = 0; i < 600; i++) {
             const x = Math.floor(seededRandom(i * 7) * 256);
@@ -126,6 +127,7 @@ const useCobblestoneTexture = () => {
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.generateMipmaps = false;
+    tex.anisotropy = 1;
     return tex;
   }, []);
 };
@@ -201,11 +203,6 @@ const useGrassTexture = () => {
           ctx.fillRect(0, 0, 512, 512);
           
           // Static seeded texture
-          const seededRandom = (seed: number) => {
-              const x = Math.sin(seed) * 10000;
-              return x - Math.floor(x);
-          };
-          
           for (let i = 0; i < 2000; i++) {
               const x = Math.floor(seededRandom(i * 2) * 512);
               const y = Math.floor(seededRandom(i * 3) * 512);
