@@ -530,7 +530,8 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
     const ref = useRef<THREE.Mesh>(null);
     useFrame((state) => {
         if (ref.current) {
-            ref.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.1) * 0.05;
+            // Smoother, slower animation to reduce flickering
+            ref.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.05) * 0.02;
         }
     });
 
@@ -610,11 +611,12 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
             {/* Improved navigation controls */}
             <OrbitControls 
                 makeDefault 
+                enableDamping
                 minPolarAngle={0} 
                 maxPolarAngle={Math.PI / 2.2} 
                 minDistance={20}
                 maxDistance={300}
-                dampingFactor={0.1}
+                dampingFactor={0.05}
                 rotateSpeed={0.5}
             />
             
