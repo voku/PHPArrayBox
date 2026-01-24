@@ -56,13 +56,16 @@ const CONFIG = {
     skyscraper: '#64748b', // Slate 500
     apartment: '#c2410c',  // Orange 700
     house: '#fefce8',      // Yellow 50
+    houseFacade: '#f5e6d3', // Cream plaster for house buildings
+    apartmentFacade: '#d4a574', // Warm beige for apartment buildings
     park: '#4d7c0f',       // Lime 700
     monument: '#6366f1',
     street: '#78716c',     // Stone 500
+    road: '#8b7d6b',       // Brown-grey for cobblestone roads
     ground: '#f0fdf4',     // Green 50
     ocean: '#0ea5e9',      // Sky 500
     oceanNight: '#0c4a6e',
-    roof: '#7f1d1d'        // Red 900
+    roof: '#b91c1c'        // Red 800 for roofs
   }
 };
 
@@ -213,7 +216,7 @@ const Roads: React.FC<{ layout: NonNullable<CityBlock['layout']> }> = ({ layout 
                 <mesh key={`v-${c}`} position={[xPos, ROAD_Y_OFFSET, 0]} rotation={[-Math.PI/2, 0, 0]} receiveShadow>
                     <planeGeometry args={[CONFIG.streetWidth, depth]} />
                     <meshStandardMaterial 
-                        color="#8b7d6b" 
+                        color={CONFIG.colors.road} 
                         roughness={0.9} 
                         polygonOffset 
                         polygonOffsetFactor={-4} 
@@ -230,7 +233,7 @@ const Roads: React.FC<{ layout: NonNullable<CityBlock['layout']> }> = ({ layout 
                 <mesh key={`h-${r}`} position={[0, ROAD_Y_OFFSET, zPos]} rotation={[-Math.PI/2, 0, 0]} receiveShadow>
                     <planeGeometry args={[width, CONFIG.streetWidth]} />
                     <meshStandardMaterial 
-                        color="#8b7d6b" 
+                        color={CONFIG.colors.road} 
                         roughness={0.9} 
                         polygonOffset 
                         polygonOffsetFactor={-4} 
@@ -258,8 +261,8 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
 
     // Building colors
     let buildingColor = block.color;
-    if (isHouse) buildingColor = '#f5e6d3'; // Cream plaster
-    if (isApartment) buildingColor = '#d4a574'; // Warm beige
+    if (isHouse) buildingColor = CONFIG.colors.houseFacade; // Cream plaster
+    if (isApartment) buildingColor = CONFIG.colors.apartmentFacade; // Warm beige
 
     return (
         <group position={[block.x, BUILDING_Y_BASE, block.z]}>
@@ -284,7 +287,7 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
                 <mesh position={[0, h + 0.5, 0]} rotation={[0, Math.PI/4, 0]} castShadow raycast={() => null}>
                      <coneGeometry args={[w * 0.8, 1.2, 4]} />
                      <meshStandardMaterial 
-                        color="#b91c1c" 
+                        color={CONFIG.colors.roof} 
                         roughness={0.9} 
                      />
                 </mesh>
@@ -295,7 +298,7 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
                      <mesh rotation={[0, 0, Math.PI/4]} position={[0, 0, 0]} castShadow>
                          <boxGeometry args={[w/1.4, w/1.4, d]} />
                          <meshStandardMaterial 
-                            color="#b91c1c" 
+                            color={CONFIG.colors.roof} 
                             roughness={0.9}
                          />
                      </mesh>
