@@ -51,29 +51,36 @@ const CONFIG = {
   streetWidth: 1.5,
   blockPadding: 0.5,
   baseUnit: 4,
+  fog: {
+    day: '#c7d7e0',
+    night: '#101828',
+    near: 80,
+    far: 320
+  },
   colors: {
-    district: ['#3b82f6', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b', '#10b981'],
-    skyscraper: '#64748b', // Slate 500
-    apartment: '#c2410c',  // Orange 700
-    house: '#fefce8',      // Yellow 50
+    district: ['#4971b8', '#7a5d9b', '#b35e6b', '#a44e38', '#b2792f', '#3f8b70'],
+    skyscraper: '#6b7280', // Cool stone gray
+    apartment: '#b45309',  // Warm ochre
+    house: '#fdf6e3',      // Aged parchment
     houseFacade: '#f5e6d3', // Cream plaster for house buildings
     apartmentFacade: '#d4a574', // Warm beige for apartment buildings
-    park: '#4d7c0f',       // Lime 700
-    monument: '#6366f1',
-    street: '#78716c',     // Stone 500
-    road: '#8b7d6b',       // Brown-grey for cobblestone roads
-    ground: '#f0fdf4',     // Green 50
-    ocean: '#0ea5e9',      // Sky 500
-    oceanNight: '#0c4a6e',
-    oceanDeep: '#1d4e89',
-    oceanShallow: '#3b82c4',
-    grassBright: '#63a926',
-    grassDark: '#2f4f1f',
-    skyDay: '#a3d5ff',
-    skyDayHorizon: '#e6f2ff',
-    skyNight: '#1a1f3a',
-    skyNightHorizon: '#2a2f4a',
-    roof: '#b91c1c'        // Red 800 for roofs
+    park: '#5b7c32',       // Forest green
+    monument: '#5b6fd4',
+    street: '#786a5f',     // Stone 500
+    road: '#7a6a5a',       // Brown-grey for cobblestone roads
+    ground: '#eadcc6',     // Warm parchment
+    ocean: '#16688e',      // Muted sea blue
+    oceanNight: '#0a2432',
+    oceanDeep: '#0d3f58',
+    oceanShallow: '#2a6e8e',
+    shoreSand: '#c7b08e',
+    grassBright: '#6a8f3a',
+    grassDark: '#2a3f20',
+    skyDay: '#98c7e8',
+    skyDayHorizon: '#d6e7f2',
+    skyNight: '#0d1223',
+    skyNightHorizon: '#1c2342',
+    roof: '#a03024'        // Aged clay roofs
   }
 };
 
@@ -281,8 +288,8 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
         emissiveColor: { value: new THREE.Color('#000000') },
         emissiveIntensity: { value: 0 },
         cameraDistance: { value: 0 },
-        fogNear: { value: 90 },
-        fogFar: { value: 280 }
+        fogNear: { value: CONFIG.fog.near },
+        fogFar: { value: CONFIG.fog.far }
     }), [buildingColor, isNight]);
 
     useEffect(() => {
@@ -420,19 +427,21 @@ const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
                              <Roads layout={block.layout} />
                          </group>
                      )}
-                     <group position={[-block.width/2 + 0.5, block.height + 0.01, -block.depth/2 + 0.5]}>
-                        <Text
-                            rotation={[-Math.PI/2, 0, 0]}
-                            position={[0, 0, 0]}
-                            fontSize={Math.min(block.width, block.depth) * 0.08}
-                            color={isNight ? '#ffffff' : '#000000'}
-                            anchorX="left"
-                            anchorY="top"
-                            font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
-                        >
-                            {block.label.toUpperCase()}
-                        </Text>
-                     </group>
+                     {block.label.toUpperCase() !== 'ROOT' && (
+                        <group position={[-block.width / 2 + 0.5, block.height + 0.01, -block.depth / 2 + 0.5]}>
+                            <Text
+                                rotation={[-Math.PI/2, 0, 0]}
+                                position={[0, 0, 0]}
+                                fontSize={Math.min(block.width, block.depth) * 0.08}
+                                color={isNight ? '#ffffff' : '#000000'}
+                                anchorX="left"
+                                anchorY="top"
+                                font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
+                            >
+                                {block.label.toUpperCase()}
+                            </Text>
+                        </group>
+                     )}
                 </group>
             )}
             <group position={[0, block.height, 0]}>
@@ -448,46 +457,31 @@ const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
 
 const Island = ({ width, depth, isNight }: { width: number, depth: number, isNight: boolean }) => {
     const margin = 8;
-    const geometryRef = useRef<THREE.BufferGeometry>(null);
-
-    useEffect(() => {
-        if (!geometryRef.current) return;
-        const geo = geometryRef.current;
-        const positions = geo.attributes.position;
-        const colors = new Float32Array(positions.count * 3);
-        const baseColor = new THREE.Color(isNight ? CONFIG.colors.grassDark : CONFIG.colors.grassBright);
-        const darkColor = new THREE.Color(CONFIG.colors.grassDark);
-        const lightColor = new THREE.Color(CONFIG.colors.grassBright);
-        const seededRandom = (x: number, y: number) => {
-            const seed = x * 12.9898 + y * 78.233;
-            return Math.abs(Math.sin(seed) * 43758.5453 % 1);
-        };
-
-        for (let i = 0; i < positions.count; i++) {
-            const x = positions.getX(i);
-            const z = positions.getZ(i);
-            const noise = seededRandom(x * 10, z * 10);
-            const color = noise > 0.6 ? lightColor : (noise < 0.4 ? darkColor : baseColor);
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
-        }
-
-        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    }, [isNight]);
+    const grassColor = isNight ? CONFIG.colors.grassDark : CONFIG.colors.grassBright;
+    const soilColor = isNight ? '#2f2218' : '#5a402a';
+    const soilTopColor = isNight ? '#3a2a1d' : '#6a4b32';
     
     return (
         <group position={[0, -0.2, 0]}>
+            {/* Shoreline - sandy border for Anno-style coast */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.08, 0]}>
+                <planeGeometry args={[width + margin * 2 + 6, depth + margin * 2 + 6, 8, 8]} />
+                <meshStandardMaterial color={CONFIG.colors.shoreSand} roughness={0.95} />
+            </mesh>
             {/* Grass surface - pure solid color */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-                <planeGeometry ref={geometryRef} args={[width + margin * 2, depth + margin * 2, 64, 64]} />
-                <meshLambertMaterial vertexColors />
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[width + margin * 2, depth + margin * 2, 8, 8]} />
+                <meshStandardMaterial color={grassColor} roughness={0.9} />
             </mesh>
             
             {/* Island Base (Dirt) */}
             <mesh position={[0, -1, 0]} receiveShadow>
                 <boxGeometry args={[width + margin * 2, 2, depth + margin * 2]} />
-                <meshStandardMaterial color="#57534e" roughness={1} />
+                <meshStandardMaterial color={soilColor} roughness={1} />
+            </mesh>
+            <mesh position={[0, -0.03, 0]} receiveShadow>
+                <boxGeometry args={[width + margin * 2 - 1, 0.1, depth + margin * 2 - 1]} />
+                <meshStandardMaterial color={soilTopColor} roughness={0.9} />
             </mesh>
         </group>
     );
@@ -505,6 +499,9 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
         if (!shaderRef.current) return;
         shaderRef.current.uniforms.deepColor.value.set(isNight ? CONFIG.colors.oceanNight : CONFIG.colors.oceanDeep);
         shaderRef.current.uniforms.shallowColor.value.set(isNight ? '#2a5d7b' : CONFIG.colors.oceanShallow);
+        shaderRef.current.uniforms.fogColor.value.set(isNight ? CONFIG.fog.night : CONFIG.fog.day);
+        shaderRef.current.uniforms.fogNear.value = CONFIG.fog.near;
+        shaderRef.current.uniforms.fogFar.value = CONFIG.fog.far;
     }, [isNight]);
 
     return (
@@ -515,11 +512,15 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
                 uniforms={{
                     time: { value: 0 },
                     deepColor: { value: new THREE.Color(isNight ? CONFIG.colors.oceanNight : CONFIG.colors.oceanDeep) },
-                    shallowColor: { value: new THREE.Color(isNight ? '#2a5d7b' : CONFIG.colors.oceanShallow) }
+                    shallowColor: { value: new THREE.Color(isNight ? '#2a5d7b' : CONFIG.colors.oceanShallow) },
+                    fogColor: { value: new THREE.Color(isNight ? CONFIG.fog.night : CONFIG.fog.day) },
+                    fogNear: { value: CONFIG.fog.near },
+                    fogFar: { value: CONFIG.fog.far }
                 }}
                 vertexShader={`
                     uniform float time;
                     varying float vWave;
+                    varying float vDistance;
                     
                     void main() {
                         vec3 pos = position;
@@ -527,17 +528,25 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
                         float wave2 = sin(pos.y * 0.015 + time * 0.2) * 0.1;
                         vWave = wave1 + wave2;
                         pos.z += vWave;
+                        vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+                        vDistance = distance(cameraPosition, worldPos.xyz);
                         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
                     }
                 `}
                 fragmentShader={`
                     uniform vec3 deepColor;
                     uniform vec3 shallowColor;
+                    uniform vec3 fogColor;
+                    uniform float fogNear;
+                    uniform float fogFar;
                     varying float vWave;
+                    varying float vDistance;
                     
                     void main() {
                         float mixFactor = (vWave + 0.25) / 0.5;
                         vec3 color = mix(deepColor, shallowColor, mixFactor);
+                        float fogFactor = smoothstep(fogNear, fogFar, vDistance);
+                        color = mix(color, fogColor, fogFactor * 0.6);
                         gl_FragColor = vec4(color, 1.0);
                     }
                 `}
@@ -630,7 +639,8 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
             gl={{ antialias: true, alpha: false, stencil: false, depth: true, powerPreference: 'high-performance' }}
             camera={{ position: [80, 80, 80], fov: 30, near: 0.1, far: 1000 }}
         >
-            <color attach="background" args={[isNight ? '#1a1a2e' : '#87ceeb']} />
+            <color attach="background" args={[isNight ? CONFIG.colors.skyNight : CONFIG.colors.skyDay]} />
+            <fog attach="fog" args={[isNight ? CONFIG.fog.night : CONFIG.fog.day, CONFIG.fog.near, CONFIG.fog.far]} />
             
             <ambientLight intensity={isNight ? 0.4 : 0.8} />
             <directionalLight 
