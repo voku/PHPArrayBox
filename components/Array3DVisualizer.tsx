@@ -194,27 +194,25 @@ const useFacadeTexture = () => {
 const useGrassTexture = () => {
   return useMemo(() => {
       const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 512;
+      canvas.width = 256;
+      canvas.height = 256;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-          // Base vibrant Anno green
+          // Base green
           ctx.fillStyle = '#5ca904';
-          ctx.fillRect(0, 0, 512, 512);
+          ctx.fillRect(0, 0, 256, 256);
           
-          // Static seeded texture
-          for (let i = 0; i < 2000; i++) {
-              const x = Math.floor(seededRandom(i * 2) * 512);
-              const y = Math.floor(seededRandom(i * 3) * 512);
-              const shade = seededRandom(i * 5) > 0.5 ? '#4a8803' : '#6eb905';
-              ctx.fillStyle = shade;
-              ctx.fillRect(x, y, 2, 2);
+          // Simple stripe pattern (no random dots)
+          ctx.fillStyle = '#4a8803';
+          for (let i = 0; i < 256; i += 8) {
+              ctx.fillRect(i, 0, 3, 256);
+              ctx.fillRect(0, i, 256, 2);
           }
       }
       const tex = new THREE.CanvasTexture(canvas);
       tex.wrapS = THREE.RepeatWrapping;
       tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(4, 4);
+      tex.repeat.set(8, 8);
       tex.minFilter = THREE.LinearFilter;
       tex.magFilter = THREE.LinearFilter;
       tex.generateMipmaps = false;
