@@ -79,6 +79,8 @@ const CONFIG = {
     shoreSandInner: '#c0aa84',
     grassBright: '#6f8a4a',
     grassDark: '#2d3f26',
+    districtOutlineDay: '#6b5f53',
+    districtOutlineNight: '#1f2937',
     skyDay: '#9cc0da',
     skyDayHorizon: '#d7e3ea',
     skyNight: '#0d1423',
@@ -439,7 +441,11 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
 };
 
 const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isNight }) => {
-    const outlineColor = isNight ? '#1f2937' : '#6b5f53';
+    const outlineColor = isNight ? CONFIG.colors.districtOutlineNight : CONFIG.colors.districtOutlineDay;
+    const districtGeometry = useMemo(
+        () => new THREE.BoxGeometry(block.width, block.height, block.depth),
+        [block.depth, block.height, block.width]
+    );
 
     return (
         <group position={[block.x, 0, block.z]}>
@@ -447,14 +453,14 @@ const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
                 <group position={[0, 0, 0]}>
                      {/* District ground plane at y=0 with colored gradient */}
                      <mesh position={[0, 0, 0]} receiveShadow castShadow>
-                        <boxGeometry args={[block.width, block.height, block.depth]} />
+                        <primitive object={districtGeometry} attach="geometry" />
                         <meshStandardMaterial 
                             color={block.color}
                             roughness={0.9}
                         />
                     </mesh>
                     <lineSegments>
-                        <edgesGeometry args={[new THREE.BoxGeometry(block.width, block.height, block.depth)]} />
+                        <edgesGeometry args={[districtGeometry]} />
                         <lineBasicMaterial color={outlineColor} transparent opacity={isNight ? 0.35 : 0.5} />
                     </lineSegments>
                      {block.layout && (
@@ -521,10 +527,7 @@ const Island = ({ width, depth, isNight }: { width: number, depth: number, isNig
         () => createRoundedRectShape(grassWidth, grassDepth, grassRadius),
         [grassWidth, grassDepth, grassRadius]
     );
-    const baseShape = useMemo(
-        () => createRoundedRectShape(grassWidth, grassDepth, grassRadius),
-        [grassWidth, grassDepth, grassRadius]
-    );
+    const baseShape = grassShape;
     
     return (
         <group position={[0, -0.2, 0]}>
@@ -569,7 +572,10 @@ const Ocean = ({
     islandRadius: number;
 }) => {
     const shaderRef = useRef<THREE.ShaderMaterial>(null);
-    const shoreBlend = Math.max(islandWidth, islandDepth) * 0.4;
+    const shoreBlend = useMemo(
+        () => Math.max(islandWidth, islandDepth) * 0.4,
+        [islandDepth, islandWidth]
+    );
     const shoreFoamWidth = 6;
 
     useFrame(({ clock }) => {
@@ -740,9 +746,15 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
   const [isLegendOpen, setIsLegendOpen] = useState(false);
   
   const cityLayout = useMemo(() => calculateLayout(rootNode), [rootNode]);
-  const islandWidth = cityLayout.width + ISLAND_MARGIN * 2 + SHORELINE_PADDING;
-  const islandDepth = cityLayout.depth + ISLAND_MARGIN * 2 + SHORELINE_PADDING;
-  const islandRadius = Math.min(islandWidth, islandDepth) * ISLAND_RADIUS_RATIO;
+  const { islandWidth, islandDepth, islandRadius } = useMemo(() => {
+      const width = cityLayout.width + ISLAND_MARGIN * 2 + SHORELINE_PADDING;
+      const depth = cityLayout.depth + ISLAND_MARGIN * 2 + SHORELINE_PADDING;
+      return {
+          islandWidth: width,
+          islandDepth: depth,
+          islandRadius: Math.min(width, depth) * ISLAND_RADIUS_RATIO
+      };
+  }, [cityLayout]);
 
   return (
     <div className="w-full h-full relative bg-stone-200 group overflow-hidden rounded-xl border border-stone-300">
