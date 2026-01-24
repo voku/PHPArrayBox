@@ -191,36 +191,6 @@ const useFacadeTexture = () => {
   }, []);
 };
 
-const useGrassTexture = () => {
-  return useMemo(() => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-          // Base green
-          ctx.fillStyle = '#5ca904';
-          ctx.fillRect(0, 0, 256, 256);
-          
-          // Simple stripe pattern (no random dots)
-          ctx.fillStyle = '#4a8803';
-          for (let i = 0; i < 256; i += 8) {
-              ctx.fillRect(i, 0, 3, 256);
-              ctx.fillRect(0, i, 256, 2);
-          }
-      }
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(8, 8);
-      tex.minFilter = THREE.LinearFilter;
-      tex.magFilter = THREE.LinearFilter;
-      tex.generateMipmaps = false;
-      tex.anisotropy = 1;
-      return tex;
-  }, []);
-};
-
 // --- Layout Algorithm ---
 
 const calculateLayout = (
@@ -487,22 +457,20 @@ const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
 };
 
 const Island = ({ width, depth, isNight }: { width: number, depth: number, isNight: boolean }) => {
-    const grassTex = useGrassTexture();
     const margin = 8;
     
     return (
         <group position={[0, -0.2, 0]}>
-            {/* The Island Mesh */}
+            {/* Grass surface - pure solid color */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-                <planeGeometry args={[width + margin * 2, depth + margin * 2, 32, 32]} />
+                <planeGeometry args={[width + margin * 2, depth + margin * 2]} />
                 <meshStandardMaterial 
-                    map={grassTex} 
-                    color={isNight ? '#064e3b' : '#ffffff'} 
-                    roughness={1} 
+                    color={isNight ? '#3a5a1f' : '#5ca904'}
+                    roughness={1}
                 />
             </mesh>
             
-            {/* Island Base (Dirt) visible on edges if we tilt camera */}
+            {/* Island Base (Dirt) */}
             <mesh position={[0, -1, 0]} receiveShadow>
                 <boxGeometry args={[width + margin * 2, 2, depth + margin * 2]} />
                 <meshStandardMaterial color="#57534e" roughness={1} />
