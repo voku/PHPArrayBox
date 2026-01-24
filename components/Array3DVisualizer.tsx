@@ -58,33 +58,62 @@ const CONFIG = {
     far: 320
   },
   colors: {
-    district: ['#4971b8', '#7a5d9b', '#b35e6b', '#a44e38', '#b2792f', '#3f8b70'],
+    district: ['#5977a1', '#7b6f8b', '#a06f6b', '#9a5f47', '#a07b3f', '#4f7c69'],
     skyscraper: '#6b7280', // Cool stone gray
-    apartment: '#b45309',  // Warm ochre
-    house: '#fdf6e3',      // Aged parchment
-    houseFacade: '#f5e6d3', // Cream plaster for house buildings
-    apartmentFacade: '#d4a574', // Warm beige for apartment buildings
-    park: '#5b7c32',       // Forest green
-    monument: '#5b6fd4',
-    street: '#786a5f',     // Stone 500
-    road: '#7a6a5a',       // Brown-grey for cobblestone roads
-    ground: '#eadcc6',     // Warm parchment
-    ocean: '#16688e',      // Muted sea blue
-    oceanNight: '#0a2432',
-    oceanDeep: '#0d3f58',
-    oceanShallow: '#2a6e8e',
-    shoreSand: '#c7b08e',
-    grassBright: '#6a8f3a',
-    grassDark: '#2a3f20',
-    skyDay: '#98c7e8',
-    skyDayHorizon: '#d6e7f2',
-    skyNight: '#0d1223',
-    skyNightHorizon: '#1c2342',
-    roof: '#a03024'        // Aged clay roofs
+    apartment: '#a0602c',  // Muted ochre
+    house: '#f2ead6',      // Aged parchment
+    houseFacade: '#e8d6c0', // Cream plaster for house buildings
+    apartmentFacade: '#caa77a', // Warm beige for apartment buildings
+    park: '#5b7a3b',       // Muted forest green
+    monument: '#5b6aa8',
+    street: '#76685b',     // Stone 500
+    road: '#736355',       // Brown-grey for cobblestone roads
+    ground: '#e2d4be',     // Warm parchment
+    ocean: '#2b6f8b',      // Muted sea blue
+    oceanNight: '#0a2230',
+    oceanDeep: '#18485f',
+    oceanShallow: '#3a7e96',
+    oceanShallowNight: '#234a60',
+    oceanFoam: '#d6c7a9',
+    shoreSand: '#c8b89a',
+    shoreSandInner: '#c0aa84',
+    grassBright: '#6f8a4a',
+    grassDark: '#2d3f26',
+    skyDay: '#9cc0da',
+    skyDayHorizon: '#d7e3ea',
+    skyNight: '#0d1423',
+    skyNightHorizon: '#1c2840',
+    roof: '#b2462d'        // Aged clay roofs
   }
 };
 
 // --- Helpers ---
+
+const ISLAND_MARGIN = 8;
+const SHORELINE_PADDING = 4;
+const BEACH_BAND_PADDING = 1.5;
+const ISLAND_RADIUS_RATIO = 0.18;
+const CAMERA_POSITION: [number, number, number] = [92, 88, 92];
+const CAMERA_FOV = 28;
+
+const createRoundedRectShape = (width: number, depth: number, radius: number) => {
+    const halfW = width / 2;
+    const halfD = depth / 2;
+    const r = Math.min(radius, halfW, halfD);
+    const shape = new THREE.Shape();
+
+    shape.moveTo(-halfW + r, -halfD);
+    shape.lineTo(halfW - r, -halfD);
+    shape.quadraticCurveTo(halfW, -halfD, halfW, -halfD + r);
+    shape.lineTo(halfW, halfD - r);
+    shape.quadraticCurveTo(halfW, halfD, halfW - r, halfD);
+    shape.lineTo(-halfW + r, halfD);
+    shape.quadraticCurveTo(-halfW, halfD, -halfW, halfD - r);
+    shape.lineTo(-halfW, -halfD + r);
+    shape.quadraticCurveTo(-halfW, -halfD, -halfW + r, -halfD);
+
+    return shape;
+};
 
 const varyColor = (baseColor: string, index: number, total: number) => {
     if (total <= 1) return baseColor;
@@ -410,6 +439,8 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
 };
 
 const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isNight }) => {
+    const outlineColor = isNight ? '#1f2937' : '#6b5f53';
+
     return (
         <group position={[block.x, 0, block.z]}>
             {block.children.length > 0 && (
@@ -421,7 +452,11 @@ const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
                             color={block.color}
                             roughness={0.9}
                         />
-                     </mesh>
+                    </mesh>
+                    <lineSegments>
+                        <edgesGeometry args={[new THREE.BoxGeometry(block.width, block.height, block.depth)]} />
+                        <lineBasicMaterial color={outlineColor} transparent opacity={isNight ? 0.35 : 0.5} />
+                    </lineSegments>
                      {block.layout && (
                          <group>
                              <Roads layout={block.layout} />
@@ -432,8 +467,9 @@ const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
                             <Text
                                 rotation={[-Math.PI/2, 0, 0]}
                                 position={[0, 0, 0]}
-                                fontSize={Math.min(block.width, block.depth) * 0.08}
+                                fontSize={Math.min(block.width, block.depth) * 0.06}
                                 color={isNight ? '#ffffff' : '#000000'}
+                                fillOpacity={isNight ? 0.85 : 0.7}
                                 anchorX="left"
                                 anchorY="top"
                                 font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
@@ -456,39 +492,85 @@ const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
 };
 
 const Island = ({ width, depth, isNight }: { width: number, depth: number, isNight: boolean }) => {
-    const margin = 8;
+    const margin = ISLAND_MARGIN;
     const grassColor = isNight ? CONFIG.colors.grassDark : CONFIG.colors.grassBright;
     const soilColor = isNight ? '#2f2218' : '#5a402a';
     const soilTopColor = isNight ? '#3a2a1d' : '#6a4b32';
+    const baseDepth = 1.6;
+    const baseTopDepth = 0.12;
+    const baseOffset = 0.25;
+    const shorelineWidth = width + margin * 2 + SHORELINE_PADDING;
+    const shorelineDepth = depth + margin * 2 + SHORELINE_PADDING;
+    const beachWidth = width + margin * 2 + BEACH_BAND_PADDING;
+    const beachDepth = depth + margin * 2 + BEACH_BAND_PADDING;
+    const grassWidth = width + margin * 2;
+    const grassDepth = depth + margin * 2;
+    const shorelineRadius = Math.min(shorelineWidth, shorelineDepth) * ISLAND_RADIUS_RATIO;
+    const beachRadius = Math.min(beachWidth, beachDepth) * ISLAND_RADIUS_RATIO;
+    const grassRadius = Math.min(grassWidth, grassDepth) * ISLAND_RADIUS_RATIO;
+
+    const shorelineShape = useMemo(
+        () => createRoundedRectShape(shorelineWidth, shorelineDepth, shorelineRadius),
+        [shorelineWidth, shorelineDepth, shorelineRadius]
+    );
+    const beachShape = useMemo(
+        () => createRoundedRectShape(beachWidth, beachDepth, beachRadius),
+        [beachWidth, beachDepth, beachRadius]
+    );
+    const grassShape = useMemo(
+        () => createRoundedRectShape(grassWidth, grassDepth, grassRadius),
+        [grassWidth, grassDepth, grassRadius]
+    );
+    const baseShape = useMemo(
+        () => createRoundedRectShape(grassWidth, grassDepth, grassRadius),
+        [grassWidth, grassDepth, grassRadius]
+    );
     
     return (
         <group position={[0, -0.2, 0]}>
             {/* Shoreline - sandy border for Anno-style coast */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.08, 0]}>
-                <planeGeometry args={[width + margin * 2 + 6, depth + margin * 2 + 6, 8, 8]} />
+                <shapeGeometry args={[shorelineShape]} />
                 <meshStandardMaterial color={CONFIG.colors.shoreSand} roughness={0.95} />
+            </mesh>
+            {/* Beach band - subtle transition between sand and grass */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.06, 0]}>
+                <shapeGeometry args={[beachShape]} />
+                <meshStandardMaterial color={CONFIG.colors.shoreSandInner} roughness={0.9} />
             </mesh>
             {/* Grass surface - pure solid color */}
             <mesh rotation={[-Math.PI / 2, 0, 0]}>
-                <planeGeometry args={[width + margin * 2, depth + margin * 2, 8, 8]} />
+                <shapeGeometry args={[grassShape]} />
                 <meshStandardMaterial color={grassColor} roughness={0.9} />
             </mesh>
             
             {/* Island Base (Dirt) */}
-            <mesh position={[0, -1, 0]} receiveShadow>
-                <boxGeometry args={[width + margin * 2, 2, depth + margin * 2]} />
+            <mesh position={[0, -(baseDepth + baseOffset), 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                <extrudeGeometry args={[baseShape, { depth: baseDepth, bevelEnabled: false }]} />
                 <meshStandardMaterial color={soilColor} roughness={1} />
             </mesh>
-            <mesh position={[0, -0.03, 0]} receiveShadow>
-                <boxGeometry args={[width + margin * 2 - 1, 0.1, depth + margin * 2 - 1]} />
+            <mesh position={[0, -(baseTopDepth + 0.18), 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                <extrudeGeometry args={[baseShape, { depth: baseTopDepth, bevelEnabled: false }]} />
                 <meshStandardMaterial color={soilTopColor} roughness={0.9} />
             </mesh>
         </group>
     );
 };
 
-const Ocean = ({ isNight }: { isNight: boolean }) => {
+const Ocean = ({
+    isNight,
+    islandWidth,
+    islandDepth,
+    islandRadius
+}: {
+    isNight: boolean;
+    islandWidth: number;
+    islandDepth: number;
+    islandRadius: number;
+}) => {
     const shaderRef = useRef<THREE.ShaderMaterial>(null);
+    const shoreBlend = Math.max(islandWidth, islandDepth) * 0.4;
+    const shoreFoamWidth = 6;
 
     useFrame(({ clock }) => {
         if (!shaderRef.current) return;
@@ -498,11 +580,18 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
     useEffect(() => {
         if (!shaderRef.current) return;
         shaderRef.current.uniforms.deepColor.value.set(isNight ? CONFIG.colors.oceanNight : CONFIG.colors.oceanDeep);
-        shaderRef.current.uniforms.shallowColor.value.set(isNight ? '#2a5d7b' : CONFIG.colors.oceanShallow);
+        shaderRef.current.uniforms.shallowColor.value.set(
+            isNight ? CONFIG.colors.oceanShallowNight : CONFIG.colors.oceanShallow
+        );
+        shaderRef.current.uniforms.foamColor.value.set(CONFIG.colors.oceanFoam);
         shaderRef.current.uniforms.fogColor.value.set(isNight ? CONFIG.fog.night : CONFIG.fog.day);
         shaderRef.current.uniforms.fogNear.value = CONFIG.fog.near;
         shaderRef.current.uniforms.fogFar.value = CONFIG.fog.far;
-    }, [isNight]);
+        shaderRef.current.uniforms.islandSize.value.set(islandWidth, islandDepth);
+        shaderRef.current.uniforms.islandRadius.value = islandRadius;
+        shaderRef.current.uniforms.shoreBlend.value = shoreBlend;
+        shaderRef.current.uniforms.shoreFoamWidth.value = shoreFoamWidth;
+    }, [isNight, islandDepth, islandRadius, islandWidth, shoreBlend]);
 
     return (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.5, 0]}>
@@ -512,15 +601,21 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
                 uniforms={{
                     time: { value: 0 },
                     deepColor: { value: new THREE.Color(isNight ? CONFIG.colors.oceanNight : CONFIG.colors.oceanDeep) },
-                    shallowColor: { value: new THREE.Color(isNight ? '#2a5d7b' : CONFIG.colors.oceanShallow) },
+                    shallowColor: { value: new THREE.Color(isNight ? CONFIG.colors.oceanShallowNight : CONFIG.colors.oceanShallow) },
+                    foamColor: { value: new THREE.Color(CONFIG.colors.oceanFoam) },
                     fogColor: { value: new THREE.Color(isNight ? CONFIG.fog.night : CONFIG.fog.day) },
                     fogNear: { value: CONFIG.fog.near },
-                    fogFar: { value: CONFIG.fog.far }
+                    fogFar: { value: CONFIG.fog.far },
+                    islandSize: { value: new THREE.Vector2(islandWidth, islandDepth) },
+                    islandRadius: { value: islandRadius },
+                    shoreBlend: { value: shoreBlend },
+                    shoreFoamWidth: { value: shoreFoamWidth }
                 }}
                 vertexShader={`
                     uniform float time;
                     varying float vWave;
                     varying float vDistance;
+                    varying vec3 vWorldPos;
                     
                     void main() {
                         vec3 pos = position;
@@ -529,6 +624,7 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
                         vWave = wave1 + wave2;
                         pos.z += vWave;
                         vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+                        vWorldPos = worldPos.xyz;
                         vDistance = distance(cameraPosition, worldPos.xyz);
                         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
                     }
@@ -536,15 +632,29 @@ const Ocean = ({ isNight }: { isNight: boolean }) => {
                 fragmentShader={`
                     uniform vec3 deepColor;
                     uniform vec3 shallowColor;
+                    uniform vec3 foamColor;
                     uniform vec3 fogColor;
                     uniform float fogNear;
                     uniform float fogFar;
+                    uniform vec2 islandSize;
+                    uniform float islandRadius;
+                    uniform float shoreBlend;
+                    uniform float shoreFoamWidth;
                     varying float vWave;
                     varying float vDistance;
+                    varying vec3 vWorldPos;
                     
                     void main() {
-                        float mixFactor = (vWave + 0.25) / 0.5;
-                        vec3 color = mix(deepColor, shallowColor, mixFactor);
+                        float waveMix = (vWave + 0.25) / 0.5;
+                        vec2 islandHalf = islandSize * 0.5;
+                        vec2 p = vec2(abs(vWorldPos.x), abs(vWorldPos.z)) - (islandHalf - vec2(islandRadius));
+                        float distToRounded = length(max(p, 0.0)) - islandRadius;
+                        float shoreDistance = max(distToRounded, 0.0);
+                        float shoreFactor = smoothstep(0.0, shoreBlend, shoreDistance);
+                        vec3 color = mix(shallowColor, deepColor, shoreFactor);
+                        color = mix(color * 0.92, color * 1.05, waveMix);
+                        float foam = 1.0 - smoothstep(0.0, shoreFoamWidth, shoreDistance);
+                        color = mix(color, foamColor, foam * 0.18);
                         float fogFactor = smoothstep(fogNear, fogFar, vDistance);
                         color = mix(color, fogColor, fogFactor * 0.6);
                         gl_FragColor = vec4(color, 1.0);
@@ -630,6 +740,9 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
   const [isLegendOpen, setIsLegendOpen] = useState(false);
   
   const cityLayout = useMemo(() => calculateLayout(rootNode), [rootNode]);
+  const islandWidth = cityLayout.width + ISLAND_MARGIN * 2 + SHORELINE_PADDING;
+  const islandDepth = cityLayout.depth + ISLAND_MARGIN * 2 + SHORELINE_PADDING;
+  const islandRadius = Math.min(islandWidth, islandDepth) * ISLAND_RADIUS_RATIO;
 
   return (
     <div className="w-full h-full relative bg-stone-200 group overflow-hidden rounded-xl border border-stone-300">
@@ -637,23 +750,28 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
             shadows="soft"
             dpr={[1, 1.5]}
             gl={{ antialias: true, alpha: false, stencil: false, depth: true, powerPreference: 'high-performance' }}
-            camera={{ position: [80, 80, 80], fov: 30, near: 0.1, far: 1000 }}
+            camera={{ position: CAMERA_POSITION, fov: CAMERA_FOV, near: 0.1, far: 1000 }}
         >
             <color attach="background" args={[isNight ? CONFIG.colors.skyNight : CONFIG.colors.skyDay]} />
             <fog attach="fog" args={[isNight ? CONFIG.fog.night : CONFIG.fog.day, CONFIG.fog.near, CONFIG.fog.far]} />
             
-            <ambientLight intensity={isNight ? 0.4 : 0.8} />
+            <ambientLight intensity={isNight ? 0.35 : 0.7} />
+            <hemisphereLight
+                intensity={isNight ? 0.15 : 0.35}
+                color={isNight ? '#7d8fb3' : '#f7e9d4'}
+                groundColor={isNight ? '#1f2a3a' : '#c3a07a'}
+            />
             <directionalLight 
                 position={[50, 80, 30]} 
-                intensity={isNight ? 0.3 : 1.5} 
+                intensity={isNight ? 0.3 : 1.35} 
                 castShadow 
-                color={isNight ? '#8b9dc3' : '#fffaf0'}
+                color={isNight ? '#8b9dc3' : '#fff2d6'}
                 shadow-mapSize={[1024, 1024]}
                 shadow-bias={-0.0001}
             >
                  <orthographicCamera attach="shadow-camera" args={[-150, 150, -150, 150]} />
             </directionalLight>
-            <directionalLight position={[-60, 40, -60]} intensity={0.4} color="#b3d9ff" />
+            <directionalLight position={[-60, 40, -60]} intensity={0.3} color="#b6c6d6" />
 
             {isNight ? (
                 <Stars radius={200} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
@@ -674,18 +792,26 @@ const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
                 </InteractionManager>
             </Bounds>
 
-            <Ocean isNight={isNight} />
+            <Ocean
+                isNight={isNight}
+                islandWidth={islandWidth}
+                islandDepth={islandDepth}
+                islandRadius={islandRadius}
+            />
             
             {/* Improved navigation controls */}
             <OrbitControls 
                 makeDefault 
                 enableDamping
-                minPolarAngle={0} 
-                maxPolarAngle={Math.PI / 2.2} 
-                minDistance={20}
-                maxDistance={300}
+                minPolarAngle={Math.PI / 3.2} 
+                maxPolarAngle={Math.PI / 2.6} 
+                minAzimuthAngle={-Math.PI / 4}
+                maxAzimuthAngle={Math.PI / 4}
+                minDistance={30}
+                maxDistance={280}
                 dampingFactor={0.05}
-                rotateSpeed={0.5}
+                rotateSpeed={0.4}
+                enablePan={false}
             />
             
             {/* BakeShadows for better performance */}
