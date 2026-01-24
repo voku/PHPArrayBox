@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import React, { useState, useMemo } from 'react';
+import { Canvas } from '@react-three/fiber';
 import { 
     OrbitControls, 
     Text, 
@@ -95,101 +95,8 @@ const getGradientColor = (baseColor: string, depth: number, index: number, total
 };
 
 // --- Procedural Assets ---
-
-// Seeded random function for consistent, flicker-free texture generation
-const seededRandom = (seed: number) => {
-    const x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
-};
-
-const useCobblestoneTexture = () => {
-  return useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-        ctx.fillStyle = '#8b7d6b';
-        ctx.fillRect(0, 0, 256, 256);
-        
-        for (let i = 0; i < 600; i++) {
-            const x = Math.floor(seededRandom(i * 7) * 256);
-            const y = Math.floor(seededRandom(i * 11) * 256);
-            const shade = seededRandom(i * 13) > 0.5 ? '#6b6356' : '#9c8d7b';
-            ctx.fillStyle = shade;
-            ctx.fillRect(x, y, 2, 2);
-        }
-    }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(1, 1);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.generateMipmaps = false;
-    tex.anisotropy = 1;
-    return tex;
-  }, []);
-};
-
-const useRoofTexture = () => {
-  return useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256; canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-        ctx.fillStyle = '#7f1d1d'; 
-        ctx.fillRect(0,0,256,256);
-        ctx.fillStyle = '#991b1b'; 
-        const tilesY = 8;
-        const tilesX = 4;
-        const stepX = 256/tilesX;
-        const stepY = 256/tilesY;
-
-        for(let y=0; y<tilesY; y++) {
-            for(let x=0; x<tilesX; x++) {
-                if ((x+y)%2 === 0) ctx.fillRect(x*stepX, y*stepY, stepX-2, stepY-2);
-            }
-        }
-    }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(2, 2);
-    return tex;
-  }, []);
-};
-
-const useFacadeTexture = () => {
-  return useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128; canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#fdfbf7'; 
-      ctx.fillRect(0, 0, 128, 128);
-      
-      // Timber
-      ctx.fillStyle = '#451a03'; 
-      ctx.fillRect(0, 0, 8, 128); 
-      ctx.fillRect(120, 0, 8, 128);
-      ctx.fillRect(0, 0, 128, 8); 
-      ctx.fillRect(0, 120, 128, 8);
-      ctx.fillRect(0, 60, 128, 6);
-      
-      // Windows
-      ctx.fillStyle = '#7dd3fc'; 
-      ctx.fillRect(20, 20, 35, 35);
-      ctx.fillRect(73, 20, 35, 35);
-      ctx.fillRect(20, 75, 35, 35);
-      ctx.fillRect(73, 75, 35, 35);
-    }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    return tex;
-  }, []);
-};
+// Note: All texture hooks have been removed to eliminate flickering issues
+// Solid colors are now used throughout for stable, flicker-free rendering
 
 // --- Layout Algorithm ---
 
@@ -292,7 +199,6 @@ const calculateLayout = (
 
 const Roads: React.FC<{ layout: NonNullable<CityBlock['layout']> }> = ({ layout }) => {
     const { rows, cols, cellSize, width, depth } = layout;
-    const cobbleTex = useCobblestoneTexture();
     const streets = [];
     
     // Strict vertical layering: District Ground (y=0) -> Roads (y=0.1) -> Buildings (y=0.15)
@@ -306,7 +212,12 @@ const Roads: React.FC<{ layout: NonNullable<CityBlock['layout']> }> = ({ layout 
              streets.push(
                 <mesh key={`v-${c}`} position={[xPos, ROAD_Y_OFFSET, 0]} rotation={[-Math.PI/2, 0, 0]} receiveShadow>
                     <planeGeometry args={[CONFIG.streetWidth, depth]} />
-                    <meshStandardMaterial map={cobbleTex} roughness={0.9} polygonOffset polygonOffsetFactor={-4} />
+                    <meshStandardMaterial 
+                        color="#8b7d6b" 
+                        roughness={0.9} 
+                        polygonOffset 
+                        polygonOffsetFactor={-4} 
+                    />
                 </mesh>
             );
         }
@@ -318,7 +229,12 @@ const Roads: React.FC<{ layout: NonNullable<CityBlock['layout']> }> = ({ layout 
             streets.push(
                 <mesh key={`h-${r}`} position={[0, ROAD_Y_OFFSET, zPos]} rotation={[-Math.PI/2, 0, 0]} receiveShadow>
                     <planeGeometry args={[width, CONFIG.streetWidth]} />
-                    <meshStandardMaterial map={cobbleTex} roughness={0.9} polygonOffset polygonOffsetFactor={-4} />
+                    <meshStandardMaterial 
+                        color="#8b7d6b" 
+                        roughness={0.9} 
+                        polygonOffset 
+                        polygonOffsetFactor={-4} 
+                    />
                 </mesh>
             );
          }
@@ -328,13 +244,7 @@ const Roads: React.FC<{ layout: NonNullable<CityBlock['layout']> }> = ({ layout 
 
 const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isNight }) => {
     const [hovered, setHover] = useState(false);
-    const roofTex = useRoofTexture();
-    const facadeTex = useFacadeTexture();
     
-    useEffect(() => {
-        facadeTex.repeat.set(1, Math.max(1, Math.floor(block.height / 2)));
-    }, [block.height, facadeTex]);
-
     const isHouse = block.type === 'house';
     const isApartment = block.type === 'apartment';
     const isTower = block.type === 'skyscraper';
@@ -345,6 +255,11 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
     
     // Buildings start at y=0.15 to sit on top of roads (which are at y=0.1)
     const BUILDING_Y_BASE = 0.15;
+
+    // Building colors
+    let buildingColor = block.color;
+    if (isHouse) buildingColor = '#f5e6d3'; // Cream plaster
+    if (isApartment) buildingColor = '#d4a574'; // Warm beige
 
     return (
         <group position={[block.x, BUILDING_Y_BASE, block.z]}>
@@ -357,19 +272,21 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
             >
                 <boxGeometry args={[w, h, d]} />
                 <meshStandardMaterial 
-                    color={hovered ? '#ffffff' : (isHouse || isApartment ? '#fdfbf7' : block.color)}
-                    map={isHouse || isApartment ? facadeTex : null}
+                    color={hovered ? '#ffffff' : buildingColor}
                     roughness={0.7}
                     emissive={isNight && !hovered ? '#ffaa00' : '#000000'}
                     emissiveIntensity={isNight ? (isTower ? 0.2 : 0.5) : 0}
                 />
             </mesh>
 
-            {/* Roofs */}
+            {/* Roofs - SOLID COLOR ONLY */}
             {isHouse && (
                 <mesh position={[0, h + 0.5, 0]} rotation={[0, Math.PI/4, 0]} castShadow raycast={() => null}>
                      <coneGeometry args={[w * 0.8, 1.2, 4]} />
-                     <meshStandardMaterial map={roofTex} color={CONFIG.colors.roof} roughness={0.9} />
+                     <meshStandardMaterial 
+                        color="#b91c1c" 
+                        roughness={0.9} 
+                     />
                 </mesh>
             )}
 
@@ -377,7 +294,10 @@ const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isN
                  <group position={[0, h + 0.25, 0]} raycast={() => null}>
                      <mesh rotation={[0, 0, Math.PI/4]} position={[0, 0, 0]} castShadow>
                          <boxGeometry args={[w/1.4, w/1.4, d]} />
-                         <meshStandardMaterial map={roofTex} color={CONFIG.colors.roof} />
+                         <meshStandardMaterial 
+                            color="#b91c1c" 
+                            roughness={0.9}
+                         />
                      </mesh>
                  </group>
              )}
@@ -480,22 +400,13 @@ const Island = ({ width, depth, isNight }: { width: number, depth: number, isNig
 };
 
 const Ocean = ({ isNight }: { isNight: boolean }) => {
-    const ref = useRef<THREE.Mesh>(null);
-    useFrame((state) => {
-        if (ref.current) {
-            ref.current.position.y = -1.5 + Math.sin(state.clock.elapsedTime * 0.2) * 0.05;
-        }
-    });
-
     return (
-        <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.5, 0]} receiveShadow>
-            <planeGeometry args={[10000, 10000, 1, 1]} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.5, 0]} receiveShadow>
+            <planeGeometry args={[10000, 10000]} />
             <meshStandardMaterial 
                 color={isNight ? '#0c4a6e' : '#2c7da0'}
-                roughness={0.3}
-                metalness={0.2}
-                transparent
-                opacity={0.85}
+                roughness={0.4}
+                metalness={0.1}
             />
         </mesh>
     );
