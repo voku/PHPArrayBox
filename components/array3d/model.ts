@@ -169,7 +169,9 @@ export const calculateLayout = (
     } else if (node.type === 'number') {
         type = 'keep';
         const numericValue = Math.abs(Number(node.value));
-        height = Math.max(2.6, Math.min(3.2 + Math.log10(numericValue + 1) * 1.35, 8));
+        height = Number.isFinite(numericValue)
+            ? Math.max(2.6, Math.min(3.2 + Math.log10(numericValue + 1) * 1.35, 8))
+            : 2.6;
     } else if (node.type === 'string') {
         type = 'warehouse';
         height = Math.max(1.9, Math.min(2.1 + String(node.value).length * 0.08, 4.4));
