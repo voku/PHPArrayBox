@@ -1,723 +1,806 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { 
-    OrbitControls, 
-    Text, 
-    Html, 
-    Center, 
-    Bounds, 
+import {
+    Bounds,
+    Center,
+    Html,
+    OrbitControls,
     useBounds,
-    Sky,
-    Stars,
-    BakeShadows
 } from '@react-three/drei';
 import * as THREE from 'three';
-import { ArrayNode } from '../types';
-import { 
-    Sun,
-    Moon,
-    Info,
-    RotateCcw,
-    Map as MapIcon,
+import {
     ChevronDown,
     ChevronUp,
-    Waves
+    Info,
+    Map as MapIcon,
+    Moon,
+    RotateCcw,
+    Sun,
+    Waves,
 } from 'lucide-react';
+import { ArrayNode } from '../types';
 
 interface Array3DVisualizerProps {
-  rootNode: ArrayNode;
+    rootNode: ArrayNode;
 }
 
-type BuildingType = 'skyscraper' | 'apartment' | 'house' | 'park' | 'monument' | 'district';
+type PlotType = 'district' | 'stone-keep' | 'townhouse' | 'cottage' | 'grove';
 
-interface CityBlock {
-  id: string;
-  node: ArrayNode;
-  width: number;
-  depth: number;
-  height: number;
-  x: number;
-  z: number;
-  children: CityBlock[];
-  type: BuildingType;
-  color: string;
-  label: string;
-  layout?: { rows: number; cols: number; cellSize: number; width: number; depth: number };
+interface ColonyPlot {
+    id: string;
+    node: ArrayNode;
+    label: string;
+    type: PlotType;
+    width: number;
+    depth: number;
+    height: number;
+    x: number;
+    z: number;
+    level: number;
+    accent: string;
+    children: ColonyPlot[];
+    layout?: {
+        rows: number;
+        columns: number;
+        cellSize: number;
+        width: number;
+        depth: number;
+    };
 }
 
-// --- Constants & Configuration ---
+const STYLE = {
+    streetWidth: 1.15,
+    plotGap: 0.55,
+    baseUnit: 4.2,
+    islandMargin: 7,
+    fogNear: 85,
+    fogFar: 260,
+    colors: {
+        skyDay: '#b7cddd',
+        skyNight: '#172233',
+        fogDay: '#c7d4d5',
+        fogNight: '#192534',
+        seaDeepDay: '#165a78',
+        seaShallowDay: '#2f84a0',
+        seaDeepNight: '#0b2638',
+        seaShallowNight: '#17465b',
+        seaFoam: '#d8cda8',
+        grassDay: '#668f3d',
+        grassNight: '#314628',
+        grassShadeDay: '#527433',
+        grassShadeNight: '#263820',
+        beach: '#c7a66b',
+        wetSand: '#a98558',
+        soil: '#60432c',
+        soilNight: '#34271d',
+        roadBase: '#5d4936',
+        roadTop: '#80684c',
+        roadNight: '#493c31',
+        plaster: '#d8caa2',
+        plasterWarm: '#c9aa75',
+        timber: '#583825',
+        timberNight: '#30241c',
+        roof: '#a33b2e',
+        roofDark: '#6d2f29',
+        stone: '#8b8879',
+        stoneDark: '#5d5d55',
+        windowDay: '#514539',
+        windowNight: '#efb85e',
+        hedge: '#365b2c',
+        districtAccents: ['#697c48', '#7d7045', '#57745d', '#7a5c48', '#6e654b'],
+    },
+} as const;
 
-const CONFIG = {
-  streetWidth: 1.5,
-  blockPadding: 0.5,
-  baseUnit: 4,
-  fog: {
-    day: '#c7d7e0',
-    night: '#101828',
-    near: 80,
-    far: 320
-  },
-  colors: {
-    district: ['#5977a1', '#7b6f8b', '#a06f6b', '#9a5f47', '#a07b3f', '#4f7c69'],
-    skyscraper: '#6b7280', // Cool stone gray
-    apartment: '#a0602c',  // Muted ochre
-    house: '#f2ead6',      // Aged parchment
-    houseFacade: '#e8d6c0', // Cream plaster for house buildings
-    apartmentFacade: '#caa77a', // Warm beige for apartment buildings
-    park: '#5b7a3b',       // Muted forest green
-    monument: '#5b6aa8',
-    street: '#76685b',     // Stone 500
-    road: '#736355',       // Brown-grey for cobblestone roads
-    ground: '#e2d4be',     // Warm parchment
-    ocean: '#2b6f8b',      // Muted sea blue
-    oceanNight: '#0a2230',
-    oceanDeep: '#18485f',
-    oceanShallow: '#3a7e96',
-    oceanShallowNight: '#234a60',
-    oceanFoam: '#d6c7a9',
-    shoreSand: '#c8b89a',
-    shoreSandInner: '#c0aa84',
-    grassBright: '#6f8a4a',
-    grassDark: '#2d3f26',
-    districtOutlineDay: '#6b5f53',
-    districtOutlineNight: '#1f2937',
-    skyDay: '#9cc0da',
-    skyDayHorizon: '#d7e3ea',
-    skyNight: '#0d1423',
-    skyNightHorizon: '#1c2840',
-    roof: '#b2462d'        // Aged clay roofs
-  }
+const hashString = (value: string): number => {
+    let hash = 2166136261;
+
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+
+    return hash >>> 0;
 };
 
-// --- Helpers ---
+const seededUnit = (seed: number): number => {
+    const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
 
-const ISLAND_MARGIN = 8;
-const SHORELINE_PADDING = 4;
-const BEACH_BAND_PADDING = 1.5;
-const ISLAND_RADIUS_RATIO = 0.18;
-const CAMERA_POSITION: [number, number, number] = [92, 88, 92];
-const CAMERA_FOV = 28;
+    return value - Math.floor(value);
+};
 
-const createRoundedRectShape = (width: number, depth: number, radius: number) => {
-    const halfW = width / 2;
-    const halfD = depth / 2;
-    const r = Math.min(radius, halfW, halfD);
+const mixColor = (base: string, accent: string, amount: number): string => {
+    const color = new THREE.Color(base);
+    color.lerp(new THREE.Color(accent), amount);
+
+    return `#${color.getHexString()}`;
+};
+
+const varyLightness = (color: string, index: number): string => {
+    const varied = new THREE.Color(color);
+    const offset = ((index % 5) - 2) * 0.035;
+    varied.offsetHSL(0, 0, offset);
+
+    return `#${varied.getHexString()}`;
+};
+
+const plotTypeForNode = (node: ArrayNode): PlotType => {
+    if (node.type === 'array') {
+        return node.children.length === 0 ? 'grove' : 'district';
+    }
+
+    if (node.type === 'number') {
+        return 'stone-keep';
+    }
+
+    if (node.type === 'string') {
+        return 'townhouse';
+    }
+
+    if (node.type === 'boolean') {
+        return 'cottage';
+    }
+
+    return 'grove';
+};
+
+const plotHeightForNode = (node: ArrayNode): number => {
+    if (node.type === 'number') {
+        const numericValue = Math.abs(Number(node.value));
+
+        return Math.min(6, 2.2 + Math.log2(numericValue + 1) * 0.72);
+    }
+
+    if (node.type === 'string') {
+        return Math.min(4.6, 2.2 + String(node.value).length * 0.12);
+    }
+
+    if (node.type === 'boolean') {
+        return 1.7;
+    }
+
+    return 0.12;
+};
+
+const calculateColonyLayout = (
+    node: ArrayNode,
+    level = 0,
+    siblingIndex = 0,
+): ColonyPlot => {
+    const type = plotTypeForNode(node);
+    const accentIndex = hashString(node.key || node.id) % STYLE.colors.districtAccents.length;
+    const accent = STYLE.colors.districtAccents[accentIndex];
+    const children = node.type === 'array'
+        ? node.children.map((child, index) => calculateColonyLayout(child, level + 1, index))
+        : [];
+
+    let width = STYLE.baseUnit;
+    let depth = STYLE.baseUnit;
+    let layout: ColonyPlot['layout'];
+
+    if (children.length > 0) {
+        const columns = Math.ceil(Math.sqrt(children.length));
+        const rows = Math.ceil(children.length / columns);
+        const childExtent = Math.max(
+            ...children.map((child) => Math.max(child.width, child.depth)),
+            STYLE.baseUnit,
+        );
+        const cellSize = childExtent + STYLE.plotGap;
+
+        width = columns * cellSize + (columns + 1) * STYLE.streetWidth;
+        depth = rows * cellSize + (rows + 1) * STYLE.streetWidth;
+        layout = { rows, columns, cellSize, width, depth };
+
+        children.forEach((child, index) => {
+            const column = index % columns;
+            const row = Math.floor(index / columns);
+
+            child.x = -width / 2 + STYLE.streetWidth + cellSize / 2
+                + column * (cellSize + STYLE.streetWidth);
+            child.z = -depth / 2 + STYLE.streetWidth + cellSize / 2
+                + row * (cellSize + STYLE.streetWidth);
+        });
+    }
+
+    return {
+        id: node.id,
+        node,
+        label: node.key,
+        type,
+        width,
+        depth,
+        height: plotHeightForNode(node),
+        x: 0,
+        z: 0,
+        level,
+        accent: varyLightness(accent, siblingIndex),
+        children,
+        layout,
+    };
+};
+
+const createIslandShape = (
+    width: number,
+    depth: number,
+    margin: number,
+    seed: number,
+): THREE.Shape => {
     const shape = new THREE.Shape();
+    const radiusX = width / 2 + margin;
+    const radiusZ = depth / 2 + margin;
+    const exponent = 4.2;
+    const points = 72;
 
-    shape.moveTo(-halfW + r, -halfD);
-    shape.lineTo(halfW - r, -halfD);
-    shape.quadraticCurveTo(halfW, -halfD, halfW, -halfD + r);
-    shape.lineTo(halfW, halfD - r);
-    shape.quadraticCurveTo(halfW, halfD, halfW - r, halfD);
-    shape.lineTo(-halfW + r, halfD);
-    shape.quadraticCurveTo(-halfW, halfD, -halfW, halfD - r);
-    shape.lineTo(-halfW, -halfD + r);
-    shape.quadraticCurveTo(-halfW, -halfD, -halfW + r, -halfD);
+    for (let index = 0; index < points; index += 1) {
+        const angle = (index / points) * Math.PI * 2;
+        const cosine = Math.cos(angle);
+        const sine = Math.sin(angle);
+        const superellipseX = Math.sign(cosine) * Math.pow(Math.abs(cosine), 2 / exponent);
+        const superellipseZ = Math.sign(sine) * Math.pow(Math.abs(sine), 2 / exponent);
+        const irregularity = 1
+            + Math.sin(angle * 3 + seed * 0.001) * 0.025
+            + Math.sin(angle * 7 + seed * 0.003) * 0.018;
+        const x = superellipseX * radiusX * irregularity;
+        const z = superellipseZ * radiusZ * irregularity;
+
+        if (index === 0) {
+            shape.moveTo(x, z);
+        } else {
+            shape.lineTo(x, z);
+        }
+    }
+
+    shape.closePath();
 
     return shape;
 };
 
-const varyColor = (baseColor: string, index: number, total: number) => {
-    if (total <= 1) return baseColor;
-    const c = new THREE.Color(baseColor);
-    // Darken down the list for a gradient effect
-    const offset = (index / total) * 0.25; 
-    c.offsetHSL(0, 0, -offset); 
-    return `#${c.getHexString()}`;
-};
-
-/**
- * Get a gradient color for districts based on nesting depth and sibling index
- * This creates beautiful gradient map effects that distinguish array structure
- */
-const getGradientColor = (baseColor: string, depth: number, index: number, totalSiblings: number): string => {
-    const c = new THREE.Color(baseColor);
-    
-    // Shift hue based on depth (0.05 per level for subtle variation)
-    const hueShift = (depth % 3) * 0.05;
-    
-    // Shift lightness based on sibling index for gradient effect
-    const lightnessShift = totalSiblings > 1 ? -(index / totalSiblings) * 0.2 : 0;
-    
-    c.offsetHSL(hueShift, 0, lightnessShift);
-    return `#${c.getHexString()}`;
-};
-
-// --- Procedural Assets ---
-// Note: All texture hooks have been removed to eliminate flickering issues
-// Solid colors are now used throughout for stable, flicker-free rendering
-
-// --- Layout Algorithm ---
-
-const calculateLayout = (
-    node: ArrayNode, 
-    depth: number = 0, 
-    index: number = 0, 
-    totalSiblings: number = 1
-): CityBlock => {
-  const isContainer = node.type === 'array';
-  let type: BuildingType = 'house';
-  let height = 1;
-  const baseSize = CONFIG.baseUnit;
-
-  if (isContainer) {
-    if (depth === 0) type = 'monument';
-    else if (node.children.length === 0) type = 'park';
-    else type = 'district';
-  } else {
-    if (node.type === 'number') {
-      type = 'skyscraper';
-      const val = Math.abs(Number(node.value));
-      height = Math.max(2, Math.min(val * 0.2, 12));
-    } else if (node.type === 'string') {
-      type = 'apartment';
-      const len = String(node.value).length;
-      height = Math.max(1.5, Math.min(len * 0.3, 6));
-    } else if (node.type === 'boolean') {
-      type = 'house';
-      height = 1.2;
-    } else if (node.type === 'null') {
-      type = 'park';
-      height = 0.2;
+const valuePreview = (node: ArrayNode): string => {
+    if (node.type === 'array') {
+        return `${node.children.length} ${node.children.length === 1 ? 'entry' : 'entries'}`;
     }
-  }
 
-  let color = '#cbd5e1';
-  if (type === 'skyscraper') color = varyColor(CONFIG.colors.skyscraper, index, totalSiblings);
-  else if (type === 'apartment') color = varyColor(CONFIG.colors.apartment, index, totalSiblings);
-  else if (type === 'house') color = varyColor(CONFIG.colors.house, index, totalSiblings);
-  else if (type === 'park') color = CONFIG.colors.park;
-  else if (type === 'monument') color = CONFIG.colors.monument;
-  else if (type === 'district') {
-      const colorIdx = node.key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      const baseDistColor = CONFIG.colors.district[colorIdx % CONFIG.colors.district.length];
-      color = getGradientColor(baseDistColor, depth, index, totalSiblings);
-  }
+    if (node.type === 'null') {
+        return 'null';
+    }
 
-  let childrenBlocks: CityBlock[] = [];
-  let totalW = baseSize;
-  let totalD = baseSize;
-  let layoutInfo = undefined;
+    const value = JSON.stringify(node.value) ?? String(node.value);
 
-  if (isContainer && node.children.length > 0) {
-     childrenBlocks = node.children.map((child, idx) => 
-        calculateLayout(child, depth + 1, idx, node.children.length)
-     );
-     
-     const count = childrenBlocks.length;
-     const cols = Math.ceil(Math.sqrt(count));
-     const rows = Math.ceil(count / cols);
-     
-     const maxChildW = Math.max(...childrenBlocks.map(c => c.width));
-     const maxChildD = Math.max(...childrenBlocks.map(c => c.depth));
-     const cellSize = Math.max(maxChildW, maxChildD) + CONFIG.blockPadding;
-     
-     totalW = (cols * cellSize) + ((cols - 1) * CONFIG.streetWidth) + (CONFIG.streetWidth * 2); 
-     totalD = (rows * cellSize) + ((rows - 1) * CONFIG.streetWidth) + (CONFIG.streetWidth * 2);
-     
-     childrenBlocks.forEach((child, idx) => {
-         const col = idx % cols;
-         const row = Math.floor(idx / cols);
-         const xOffset = (col * (cellSize + CONFIG.streetWidth));
-         const zOffset = (row * (cellSize + CONFIG.streetWidth));
-         child.x = xOffset - (totalW / 2) + (cellSize / 2) + CONFIG.streetWidth;
-         child.z = zOffset - (totalD / 2) + (cellSize / 2) + CONFIG.streetWidth;
-     });
-     
-     height = 0.2; // Thin base for districts
-     layoutInfo = { rows, cols, cellSize, width: totalW, depth: totalD };
-  }
-
-  return {
-      id: node.id,
-      node,
-      width: totalW,
-      depth: totalD,
-      height,
-      x: 0, 
-      z: 0,
-      children: childrenBlocks,
-      type,
-      color,
-      label: node.key,
-      layout: layoutInfo
-  };
+    return value.length > 48 ? `${value.slice(0, 45)}...` : value;
 };
 
-// --- Components ---
+const HoverCard: React.FC<{ plot: ColonyPlot; top: number }> = ({ plot, top }) => (
+    <Html
+        position={[0, top, 0]}
+        center
+        distanceFactor={28}
+        zIndexRange={[100, 0]}
+        style={{ pointerEvents: 'none' }}
+    >
+        <div className="min-w-[170px] rounded border-2 border-[#6b4528] bg-[#efe1b8]/95 px-3 py-2 text-[#3f2a1b] shadow-xl">
+            <div className="text-[10px] font-bold uppercase tracking-[0.16em] opacity-70">
+                {plot.type.replace('-', ' ')}
+            </div>
+            <div className="truncate font-serif text-sm font-bold">{plot.label || 'root'}</div>
+            <div className="mt-1 rounded border border-[#b7935d] bg-[#e2ce9e] px-2 py-1 font-mono text-[10px]">
+                {valuePreview(plot.node)}
+            </div>
+        </div>
+    </Html>
+);
 
-const Roads: React.FC<{ layout: NonNullable<CityBlock['layout']> }> = ({ layout }) => {
-    const { rows, cols, cellSize, width, depth } = layout;
-    const streets = [];
-    
-    // Strict vertical layering: District Ground (y=0) -> Roads (y=0.1) -> Buildings (y=0.15)
-    // This prevents Z-fighting between surfaces
-    const ROAD_Y_OFFSET = 0.1;
-    
-    // Vertical Streets
-    for (let c = 0; c <= cols; c++) {
-        const xPos = (-width / 2) + (c * (cellSize + CONFIG.streetWidth)) + (CONFIG.streetWidth / 2);
-        if (xPos < width/2) {
-             streets.push(
-                <mesh key={`v-${c}`} position={[xPos, ROAD_Y_OFFSET, 0]} rotation={[-Math.PI/2, 0, 0]} receiveShadow>
-                    <planeGeometry args={[CONFIG.streetWidth, depth]} />
-                    <meshStandardMaterial 
-                        color={CONFIG.colors.road} 
-                        roughness={0.9} 
-                        polygonOffset 
-                        polygonOffsetFactor={-4} 
-                    />
+const DirtRoads: React.FC<{
+    layout: NonNullable<ColonyPlot['layout']>;
+    isNight: boolean;
+}> = ({ layout, isNight }) => {
+    const roads: React.ReactNode[] = [];
+    const roadColor = isNight ? STYLE.colors.roadNight : STYLE.colors.roadTop;
+
+    const addRoad = (key: string, width: number, depth: number, x: number, z: number): void => {
+        roads.push(
+            <group key={key} position={[x, 0.075, z]}>
+                <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                    <planeGeometry args={[width, depth]} />
+                    <meshStandardMaterial color={STYLE.colors.roadBase} roughness={1} />
                 </mesh>
-            );
-        }
-    }
-    // Horizontal Streets
-    for (let r = 0; r <= rows; r++) {
-         const zPos = (-depth / 2) + (r * (cellSize + CONFIG.streetWidth)) + (CONFIG.streetWidth / 2);
-         if (zPos < depth/2) {
-            streets.push(
-                <mesh key={`h-${r}`} position={[0, ROAD_Y_OFFSET, zPos]} rotation={[-Math.PI/2, 0, 0]} receiveShadow>
-                    <planeGeometry args={[width, CONFIG.streetWidth]} />
-                    <meshStandardMaterial 
-                        color={CONFIG.colors.road} 
-                        roughness={0.9} 
-                        polygonOffset 
-                        polygonOffsetFactor={-4} 
-                    />
+                <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                    <planeGeometry args={[Math.max(0.2, width - 0.24), Math.max(0.2, depth - 0.24)]} />
+                    <meshStandardMaterial color={roadColor} roughness={1} />
                 </mesh>
-            );
-         }
+            </group>,
+        );
+    };
+
+    for (let column = 0; column <= layout.columns; column += 1) {
+        const x = -layout.width / 2 + STYLE.streetWidth / 2
+            + column * (layout.cellSize + STYLE.streetWidth);
+        addRoad(`vertical-${column}`, STYLE.streetWidth, layout.depth, x, 0);
     }
-    return <group>{streets}</group>;
+
+    for (let row = 0; row <= layout.rows; row += 1) {
+        const z = -layout.depth / 2 + STYLE.streetWidth / 2
+            + row * (layout.cellSize + STYLE.streetWidth);
+        addRoad(`horizontal-${row}`, layout.width, STYLE.streetWidth, 0, z);
+    }
+
+    return <group>{roads}</group>;
 };
 
-const Building: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isNight }) => {
-    const [hovered, setHover] = useState(false);
-    const meshRef = useRef<THREE.Mesh>(null);
-    const materialRef = useRef<THREE.ShaderMaterial>(null);
-    const worldPosition = useMemo(() => new THREE.Vector3(), []);
-    
-    const isHouse = block.type === 'house';
-    const isApartment = block.type === 'apartment';
-    const isTower = block.type === 'skyscraper';
-    
-    const w = block.width * 0.85;
-    const d = block.depth * 0.85;
-    const h = block.height;
-    
-    // Buildings start at y=0.15 to sit on top of roads (which are at y=0.1)
-    const BUILDING_Y_BASE = 0.15;
-
-    // Building colors
-    let buildingColor = block.color;
-    if (isHouse) buildingColor = CONFIG.colors.houseFacade; // Cream plaster
-    if (isApartment) buildingColor = CONFIG.colors.apartmentFacade; // Warm beige
-
-    const materialUniforms = useMemo(() => ({
-        baseColor: { value: new THREE.Color(buildingColor) },
-        hazeColor: { value: new THREE.Color(isNight ? CONFIG.colors.skyNight : CONFIG.colors.skyDay) },
-        emissiveColor: { value: new THREE.Color('#000000') },
-        emissiveIntensity: { value: 0 },
-        cameraDistance: { value: 0 },
-        fogNear: { value: CONFIG.fog.near },
-        fogFar: { value: CONFIG.fog.far }
-    }), [buildingColor, isNight]);
-
-    useEffect(() => {
-        if (!materialRef.current) return;
-        materialRef.current.uniforms.baseColor.value.set(hovered ? '#ffffff' : buildingColor);
-        materialRef.current.uniforms.hazeColor.value.set(isNight ? CONFIG.colors.skyNight : CONFIG.colors.skyDay);
-        materialRef.current.uniforms.emissiveColor.value.set(isNight && !hovered ? '#ffb347' : '#000000');
-        materialRef.current.uniforms.emissiveIntensity.value = isNight ? (isTower ? 0.2 : 0.35) : 0;
-    }, [buildingColor, hovered, isNight, isTower]);
-
-    useFrame(({ camera }) => {
-        if (!meshRef.current || !materialRef.current) return;
-        meshRef.current.getWorldPosition(worldPosition);
-        materialRef.current.uniforms.cameraDistance.value = camera.position.distanceTo(worldPosition);
-    });
+const TimberBeams: React.FC<{
+    width: number;
+    depth: number;
+    height: number;
+    color: string;
+}> = ({ width, depth, height, color }) => {
+    const beamThickness = 0.09;
+    const frontZ = depth / 2 + 0.012;
+    const sideX = width / 2 + 0.012;
 
     return (
-        <group position={[block.x, BUILDING_Y_BASE, block.z]}>
-            <mesh
-                ref={meshRef}
-                position={[0, h / 2, 0]}
-                onPointerOver={(e) => { e.stopPropagation(); setHover(true); }}
-                onPointerOut={() => setHover(false)}
-                castShadow
-                receiveShadow
-            >
-                <boxGeometry args={[w, h, d]} />
-                <shaderMaterial
-                    ref={materialRef}
-                    uniforms={materialUniforms}
-                    vertexShader={`
-                        varying vec3 vNormal;
-                        
-                        void main() {
-                            vNormal = normalize(normalMatrix * normal);
-                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                        }
-                    `}
-                    fragmentShader={`
-                        uniform vec3 baseColor;
-                        uniform vec3 hazeColor;
-                        uniform vec3 emissiveColor;
-                        uniform float emissiveIntensity;
-                        uniform float cameraDistance;
-                        uniform float fogNear;
-                        uniform float fogFar;
-                        
-                        varying vec3 vNormal;
-                        
-                        void main() {
-                            vec3 lightDir = normalize(vec3(1.0, 1.3, 0.8));
-                            float diffuse = max(dot(vNormal, lightDir), 0.0);
-                            float ambient = 0.6;
-                            float lighting = ambient + diffuse * 0.45;
-                            
-                            vec3 litColor = baseColor * lighting;
-                            litColor += emissiveColor * emissiveIntensity;
-                            
-                            float fogFactor = smoothstep(fogNear, fogFar, cameraDistance);
-                            vec3 finalColor = mix(litColor, hazeColor, fogFactor * 0.5);
-
-                            float dither = mod(gl_FragCoord.x + gl_FragCoord.y, 2.0);
-                            if (lighting < 0.55 && dither > 0.5) {
-                                finalColor *= 0.92;
-                            }
-                            
-                            gl_FragColor = vec4(finalColor, 1.0);
-                        }
-                    `}
-                />
-            </mesh>
-
-            {/* Roofs - SOLID COLOR ONLY */}
-            {isHouse && (
-                <mesh position={[0, h + 0.5, 0]} rotation={[0, Math.PI/4, 0]} castShadow raycast={() => null}>
-                     <coneGeometry args={[w * 0.8, 1.2, 4]} />
-                     <meshLambertMaterial color={CONFIG.colors.roof} />
+        <group>
+            {[0.42, 0.82].map((heightRatio) => (
+                <React.Fragment key={heightRatio}>
+                    <mesh position={[0, height * heightRatio, frontZ]}>
+                        <boxGeometry args={[width * 0.92, beamThickness, beamThickness]} />
+                        <meshLambertMaterial color={color} />
+                    </mesh>
+                    <mesh position={[sideX, height * heightRatio, 0]}>
+                        <boxGeometry args={[beamThickness, beamThickness, depth * 0.92]} />
+                        <meshLambertMaterial color={color} />
+                    </mesh>
+                </React.Fragment>
+            ))}
+            {[-0.3, 0.3].map((xRatio) => (
+                <mesh key={`front-${xRatio}`} position={[width * xRatio, height * 0.52, frontZ]}>
+                    <boxGeometry args={[beamThickness, height * 0.88, beamThickness]} />
+                    <meshLambertMaterial color={color} />
                 </mesh>
-            )}
-
-            {isApartment && (
-                 <group position={[0, h + 0.25, 0]} raycast={() => null}>
-                     <mesh rotation={[0, 0, Math.PI/4]} position={[0, 0, 0]} castShadow>
-                         <boxGeometry args={[w/1.4, w/1.4, d]} />
-                         <meshLambertMaterial color={CONFIG.colors.roof} />
-                     </mesh>
-                 </group>
-             )}
-
-            {isTower && (
-                 <group position={[0, h, 0]} raycast={() => null}>
-                     <mesh position={[0, 0.1, 0]} castShadow>
-                         <boxGeometry args={[w + 0.2, 0.2, d + 0.2]} />
-                         <meshLambertMaterial color={block.color} />
-                     </mesh>
-                     <mesh position={[0, 0.5, 0]} castShadow>
-                         <cylinderGeometry args={[w * 0.3, w * 0.3, 0.8, 6]} />
-                         <meshLambertMaterial color={block.color} />
-                     </mesh>
-                 </group>
-            )}
-
-            {hovered && (
-                <Html distanceFactor={25} position={[0, h + 2, 0]} zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
-                    <div className="bg-[#fefce8] text-[#451a03] p-3 rounded shadow-xl border-2 border-[#78350f] min-w-[160px] transform -translate-x-1/2 flex flex-col gap-1 font-serif">
-                        <div className="flex items-center justify-between border-b border-[#78350f]/20 pb-1 mb-1">
-                             <span className="text-[10px] uppercase font-bold tracking-wider">{block.type}</span>
-                        </div>
-                        <div className="font-bold text-sm truncate max-w-[200px]">{block.label}</div>
-                        <div className="text-xs font-mono text-[#78350f] break-all bg-[#fef3c7] p-1 rounded border border-[#fde68a]">
-                            {JSON.stringify(block.node.value)?.slice(0, 40)}
-                        </div>
-                    </div>
-                </Html>
-            )}
+            ))}
+            {[-0.3, 0.3].map((zRatio) => (
+                <mesh key={`side-${zRatio}`} position={[sideX, height * 0.52, depth * zRatio]}>
+                    <boxGeometry args={[beamThickness, height * 0.88, beamThickness]} />
+                    <meshLambertMaterial color={color} />
+                </mesh>
+            ))}
         </group>
     );
 };
 
-const District: React.FC<{ block: CityBlock, isNight: boolean }> = ({ block, isNight }) => {
-    const outlineColor = isNight ? CONFIG.colors.districtOutlineNight : CONFIG.colors.districtOutlineDay;
-    const districtGeometry = useMemo(
-        () => new THREE.BoxGeometry(block.width, block.height, block.depth),
-        [block.depth, block.height, block.width]
-    );
+const Window: React.FC<{
+    position: [number, number, number];
+    rotation?: [number, number, number];
+    isNight: boolean;
+}> = ({ position, rotation = [0, 0, 0], isNight }) => (
+    <mesh position={position} rotation={rotation}>
+        <planeGeometry args={[0.36, 0.48]} />
+        <meshStandardMaterial
+            color={isNight ? STYLE.colors.windowNight : STYLE.colors.windowDay}
+            emissive={isNight ? STYLE.colors.windowNight : '#000000'}
+            emissiveIntensity={isNight ? 0.65 : 0}
+            roughness={0.65}
+        />
+    </mesh>
+);
+
+const Cottage: React.FC<{
+    plot: ColonyPlot;
+    isNight: boolean;
+    compact?: boolean;
+}> = ({ plot, isNight, compact = false }) => {
+    const [hovered, setHovered] = useState(false);
+    const width = plot.width * (compact ? 0.58 : 0.7);
+    const depth = plot.depth * (compact ? 0.55 : 0.68);
+    const wallHeight = compact ? 1.35 : plot.height;
+    const roofHeight = compact ? 1.05 : 1.35;
+    const facade = compact ? STYLE.colors.plaster : STYLE.colors.plasterWarm;
+    const timber = isNight ? STYLE.colors.timberNight : STYLE.colors.timber;
 
     return (
-        <group position={[block.x, 0, block.z]}>
-            {block.children.length > 0 && (
-                <group position={[0, 0, 0]}>
-                     {/* District ground plane at y=0 with colored gradient */}
-                     <mesh position={[0, 0, 0]} receiveShadow castShadow>
-                        <primitive object={districtGeometry} attach="geometry" />
-                        <meshStandardMaterial 
-                            color={block.color}
-                            roughness={0.9}
-                        />
-                    </mesh>
-                    <lineSegments>
-                        <edgesGeometry args={[districtGeometry]} />
-                        <lineBasicMaterial color={outlineColor} transparent opacity={isNight ? 0.35 : 0.5} />
-                    </lineSegments>
-                     {block.layout && (
-                         <group>
-                             <Roads layout={block.layout} />
-                         </group>
-                     )}
-                     {block.label.toUpperCase() !== 'ROOT' && (
-                        <group position={[-block.width / 2 + 0.5, block.height + 0.01, -block.depth / 2 + 0.5]}>
-                            <Text
-                                rotation={[-Math.PI/2, 0, 0]}
-                                position={[0, 0, 0]}
-                                fontSize={Math.min(block.width, block.depth) * 0.06}
-                                color={isNight ? '#ffffff' : '#000000'}
-                                fillOpacity={isNight ? 0.85 : 0.7}
-                                anchorX="left"
-                                anchorY="top"
-                                font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
-                            >
-                                {block.label.toUpperCase()}
-                            </Text>
-                        </group>
-                     )}
-                </group>
-            )}
-            <group position={[0, block.height, 0]}>
-                {block.children.map(child => (
-                    child.children.length > 0 
-                        ? <District key={child.id} block={child} isNight={isNight} />
-                        : <Building key={child.id} block={child} isNight={isNight} />
-                ))}
+        <group
+            position={[plot.x, 0.14, plot.z]}
+            onPointerOver={(event) => {
+                event.stopPropagation();
+                setHovered(true);
+            }}
+            onPointerOut={() => setHovered(false)}
+        >
+            <mesh position={[0, wallHeight / 2, 0]} castShadow receiveShadow>
+                <boxGeometry args={[width, wallHeight, depth]} />
+                <meshStandardMaterial color={hovered ? '#eadfbd' : facade} roughness={0.92} />
+            </mesh>
+            <TimberBeams width={width} depth={depth} height={wallHeight} color={timber} />
+            <mesh position={[0, wallHeight + roofHeight / 2 - 0.1, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
+                <coneGeometry args={[Math.max(width, depth) * 0.76, roofHeight, 4]} />
+                <meshStandardMaterial color={hovered ? '#b94b3c' : STYLE.colors.roof} roughness={0.88} />
+            </mesh>
+            <mesh position={[width * 0.24, wallHeight + roofHeight * 0.62, -depth * 0.1]} castShadow>
+                <boxGeometry args={[0.24, 0.7, 0.28]} />
+                <meshStandardMaterial color={STYLE.colors.stoneDark} roughness={1} />
+            </mesh>
+            <Window position={[-width * 0.2, wallHeight * 0.52, depth / 2 + 0.016]} isNight={isNight} />
+            <Window
+                position={[width / 2 + 0.016, wallHeight * 0.52, depth * 0.12]}
+                rotation={[0, Math.PI / 2, 0]}
+                isNight={isNight}
+            />
+            {hovered && <HoverCard plot={plot} top={wallHeight + roofHeight + 1.2} />}
+        </group>
+    );
+};
+
+const Townhouse: React.FC<{ plot: ColonyPlot; isNight: boolean }> = ({ plot, isNight }) => {
+    const [hovered, setHovered] = useState(false);
+    const width = plot.width * 0.7;
+    const depth = plot.depth * 0.68;
+    const wallHeight = plot.height;
+    const roofHeight = 1.45;
+    const timber = isNight ? STYLE.colors.timberNight : STYLE.colors.timber;
+
+    return (
+        <group
+            position={[plot.x, 0.14, plot.z]}
+            onPointerOver={(event) => {
+                event.stopPropagation();
+                setHovered(true);
+            }}
+            onPointerOut={() => setHovered(false)}
+        >
+            <mesh position={[0, wallHeight / 2, 0]} castShadow receiveShadow>
+                <boxGeometry args={[width, wallHeight, depth]} />
+                <meshStandardMaterial
+                    color={hovered ? '#ead8b1' : STYLE.colors.plasterWarm}
+                    roughness={0.9}
+                />
+            </mesh>
+            <TimberBeams width={width} depth={depth} height={wallHeight} color={timber} />
+            <mesh position={[0, wallHeight + roofHeight / 2 - 0.08, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
+                <coneGeometry args={[Math.max(width, depth) * 0.78, roofHeight, 4]} />
+                <meshStandardMaterial color={hovered ? '#ba4b3b' : STYLE.colors.roof} roughness={0.86} />
+            </mesh>
+            {[0.3, 0.68].map((heightRatio) => (
+                <React.Fragment key={heightRatio}>
+                    <Window
+                        position={[-width * 0.22, wallHeight * heightRatio, depth / 2 + 0.016]}
+                        isNight={isNight}
+                    />
+                    <Window
+                        position={[width * 0.22, wallHeight * heightRatio, depth / 2 + 0.016]}
+                        isNight={isNight}
+                    />
+                </React.Fragment>
+            ))}
+            {hovered && <HoverCard plot={plot} top={wallHeight + roofHeight + 1.2} />}
+        </group>
+    );
+};
+
+const Crenellations: React.FC<{
+    width: number;
+    depth: number;
+    height: number;
+    color: string;
+}> = ({ width, depth, height, color }) => {
+    const blocks: React.ReactNode[] = [];
+    const countPerSide = 5;
+
+    for (let index = 0; index < countPerSide; index += 1) {
+        const ratio = countPerSide === 1 ? 0 : index / (countPerSide - 1) - 0.5;
+        const x = ratio * (width - 0.45);
+        const z = ratio * (depth - 0.45);
+
+        blocks.push(
+            <mesh key={`north-${index}`} position={[x, height, -depth / 2 + 0.12]} castShadow>
+                <boxGeometry args={[0.34, 0.38, 0.34]} />
+                <meshStandardMaterial color={color} roughness={1} />
+            </mesh>,
+            <mesh key={`south-${index}`} position={[x, height, depth / 2 - 0.12]} castShadow>
+                <boxGeometry args={[0.34, 0.38, 0.34]} />
+                <meshStandardMaterial color={color} roughness={1} />
+            </mesh>,
+            <mesh key={`west-${index}`} position={[-width / 2 + 0.12, height, z]} castShadow>
+                <boxGeometry args={[0.34, 0.38, 0.34]} />
+                <meshStandardMaterial color={color} roughness={1} />
+            </mesh>,
+            <mesh key={`east-${index}`} position={[width / 2 - 0.12, height, z]} castShadow>
+                <boxGeometry args={[0.34, 0.38, 0.34]} />
+                <meshStandardMaterial color={color} roughness={1} />
+            </mesh>,
+        );
+    }
+
+    return <group>{blocks}</group>;
+};
+
+const StoneKeep: React.FC<{ plot: ColonyPlot; isNight: boolean }> = ({ plot, isNight }) => {
+    const [hovered, setHovered] = useState(false);
+    const width = plot.width * 0.62;
+    const depth = plot.depth * 0.62;
+    const height = plot.height;
+    const stone = hovered ? '#a6a18e' : STYLE.colors.stone;
+
+    return (
+        <group
+            position={[plot.x, 0.14, plot.z]}
+            onPointerOver={(event) => {
+                event.stopPropagation();
+                setHovered(true);
+            }}
+            onPointerOut={() => setHovered(false)}
+        >
+            <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+                <boxGeometry args={[width, height, depth]} />
+                <meshStandardMaterial color={stone} roughness={1} />
+            </mesh>
+            <mesh position={[0, height + 0.08, 0]} castShadow>
+                <boxGeometry args={[width + 0.22, 0.22, depth + 0.22]} />
+                <meshStandardMaterial color={STYLE.colors.stoneDark} roughness={1} />
+            </mesh>
+            <Crenellations width={width} depth={depth} height={height + 0.35} color={stone} />
+            <mesh position={[0, 0.52, depth / 2 + 0.018]}>
+                <planeGeometry args={[0.54, 0.9]} />
+                <meshStandardMaterial color="#3d3027" roughness={1} />
+            </mesh>
+            <Window position={[-width * 0.22, height * 0.58, depth / 2 + 0.018]} isNight={isNight} />
+            <Window position={[width * 0.22, height * 0.58, depth / 2 + 0.018]} isNight={isNight} />
+            {hovered && <HoverCard plot={plot} top={height + 1.6} />}
+        </group>
+    );
+};
+
+const Tree: React.FC<{
+    x: number;
+    z: number;
+    scale: number;
+    isNight: boolean;
+}> = ({ x, z, scale, isNight }) => (
+    <group position={[x, 0.12, z]} scale={scale}>
+        <mesh position={[0, 0.55, 0]} castShadow>
+            <cylinderGeometry args={[0.11, 0.15, 1.1, 6]} />
+            <meshStandardMaterial color={STYLE.colors.timber} roughness={1} />
+        </mesh>
+        <mesh position={[0, 1.35, 0]} castShadow>
+            <coneGeometry args={[0.58, 1.55, 7]} />
+            <meshStandardMaterial
+                color={isNight ? STYLE.colors.grassShadeNight : STYLE.colors.hedge}
+                roughness={1}
+            />
+        </mesh>
+        <mesh position={[0, 1.9, 0]} castShadow>
+            <coneGeometry args={[0.42, 1.15, 7]} />
+            <meshStandardMaterial
+                color={isNight ? STYLE.colors.grassNight : STYLE.colors.grassShadeDay}
+                roughness={1}
+            />
+        </mesh>
+    </group>
+);
+
+const Grove: React.FC<{ plot: ColonyPlot; isNight: boolean }> = ({ plot, isNight }) => {
+    const [hovered, setHovered] = useState(false);
+    const seed = hashString(plot.id);
+    const trees = useMemo(() => Array.from({ length: 5 }, (_, index) => ({
+        x: (seededUnit(seed + index * 19) - 0.5) * plot.width * 0.55,
+        z: (seededUnit(seed + index * 31) - 0.5) * plot.depth * 0.55,
+        scale: 0.78 + seededUnit(seed + index * 43) * 0.34,
+    })), [plot.depth, plot.id, plot.width, seed]);
+
+    return (
+        <group
+            position={[plot.x, 0.08, plot.z]}
+            onPointerOver={(event) => {
+                event.stopPropagation();
+                setHovered(true);
+            }}
+            onPointerOut={() => setHovered(false)}
+        >
+            <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                <circleGeometry args={[Math.min(plot.width, plot.depth) * 0.34, 20]} />
+                <meshStandardMaterial
+                    color={isNight ? STYLE.colors.grassShadeNight : STYLE.colors.grassShadeDay}
+                    roughness={1}
+                />
+            </mesh>
+            {trees.map((tree, index) => (
+                <Tree key={index} {...tree} isNight={isNight} />
+            ))}
+            {hovered && <HoverCard plot={plot} top={3.4} />}
+        </group>
+    );
+};
+
+const Boundary: React.FC<{
+    width: number;
+    depth: number;
+    level: number;
+    isNight: boolean;
+}> = ({ width, depth, level, isNight }) => {
+    if (level === 0) {
+        return null;
+    }
+
+    const color = isNight ? '#3e4038' : level === 1 ? '#6f705e' : STYLE.colors.hedge;
+    const height = level === 1 ? 0.36 : 0.24;
+    const thickness = level === 1 ? 0.16 : 0.12;
+
+    return (
+        <group position={[0, height / 2 + 0.05, 0]}>
+            <mesh position={[0, 0, -depth / 2]} castShadow>
+                <boxGeometry args={[width, height, thickness]} />
+                <meshStandardMaterial color={color} roughness={1} />
+            </mesh>
+            <mesh position={[0, 0, depth / 2]} castShadow>
+                <boxGeometry args={[width, height, thickness]} />
+                <meshStandardMaterial color={color} roughness={1} />
+            </mesh>
+            <mesh position={[-width / 2, 0, 0]} castShadow>
+                <boxGeometry args={[thickness, height, depth]} />
+                <meshStandardMaterial color={color} roughness={1} />
+            </mesh>
+            <mesh position={[width / 2, 0, 0]} castShadow>
+                <boxGeometry args={[thickness, height, depth]} />
+                <meshStandardMaterial color={color} roughness={1} />
+            </mesh>
+        </group>
+    );
+};
+
+const ColonyDistrict: React.FC<{ plot: ColonyPlot; isNight: boolean }> = ({ plot, isNight }) => {
+    const grassBase = isNight ? STYLE.colors.grassNight : STYLE.colors.grassDay;
+    const districtColor = mixColor(grassBase, plot.accent, plot.level === 0 ? 0 : 0.18);
+
+    if (plot.children.length === 0) {
+        return <Grove plot={plot} isNight={isNight} />;
+    }
+
+    return (
+        <group position={[plot.x, plot.level === 0 ? 0 : 0.045, plot.z]}>
+            <mesh position={[0, 0.035, 0]} receiveShadow>
+                <boxGeometry args={[plot.width, 0.07, plot.depth]} />
+                <meshStandardMaterial color={districtColor} roughness={1} />
+            </mesh>
+            <Boundary width={plot.width} depth={plot.depth} level={plot.level} isNight={isNight} />
+            {plot.layout && <DirtRoads layout={plot.layout} isNight={isNight} />}
+            <group position={[0, 0.1, 0]}>
+                {plot.children.map((child) => {
+                    if (child.type === 'district') {
+                        return <ColonyDistrict key={child.id} plot={child} isNight={isNight} />;
+                    }
+
+                    if (child.type === 'stone-keep') {
+                        return <StoneKeep key={child.id} plot={child} isNight={isNight} />;
+                    }
+
+                    if (child.type === 'townhouse') {
+                        return <Townhouse key={child.id} plot={child} isNight={isNight} />;
+                    }
+
+                    if (child.type === 'cottage') {
+                        return <Cottage key={child.id} plot={child} isNight={isNight} compact />;
+                    }
+
+                    return <Grove key={child.id} plot={child} isNight={isNight} />;
+                })}
             </group>
         </group>
     );
 };
 
-const Island = ({ width, depth, isNight }: { width: number, depth: number, isNight: boolean }) => {
-    const margin = ISLAND_MARGIN;
-    const grassColor = isNight ? CONFIG.colors.grassDark : CONFIG.colors.grassBright;
-    const soilColor = isNight ? '#2f2218' : '#5a402a';
-    const soilTopColor = isNight ? '#3a2a1d' : '#6a4b32';
-    const baseDepth = 1.6;
-    const baseTopDepth = 0.12;
-    const baseOffset = 0.25;
-    const shorelineWidth = width + margin * 2 + SHORELINE_PADDING;
-    const shorelineDepth = depth + margin * 2 + SHORELINE_PADDING;
-    const beachWidth = width + margin * 2 + BEACH_BAND_PADDING;
-    const beachDepth = depth + margin * 2 + BEACH_BAND_PADDING;
-    const grassWidth = width + margin * 2;
-    const grassDepth = depth + margin * 2;
-    const shorelineRadius = Math.min(shorelineWidth, shorelineDepth) * ISLAND_RADIUS_RATIO;
-    const beachRadius = Math.min(beachWidth, beachDepth) * ISLAND_RADIUS_RATIO;
-    const grassRadius = Math.min(grassWidth, grassDepth) * ISLAND_RADIUS_RATIO;
-
-    const shorelineShape = useMemo(
-        () => createRoundedRectShape(shorelineWidth, shorelineDepth, shorelineRadius),
-        [shorelineWidth, shorelineDepth, shorelineRadius]
+const Island: React.FC<{
+    width: number;
+    depth: number;
+    seed: number;
+    isNight: boolean;
+}> = ({ width, depth, seed, isNight }) => {
+    const outerShape = useMemo(
+        () => createIslandShape(width, depth, STYLE.islandMargin + 2.6, seed),
+        [depth, seed, width],
     );
     const beachShape = useMemo(
-        () => createRoundedRectShape(beachWidth, beachDepth, beachRadius),
-        [beachWidth, beachDepth, beachRadius]
+        () => createIslandShape(width, depth, STYLE.islandMargin + 1.35, seed),
+        [depth, seed, width],
     );
     const grassShape = useMemo(
-        () => createRoundedRectShape(grassWidth, grassDepth, grassRadius),
-        [grassWidth, grassDepth, grassRadius]
+        () => createIslandShape(width, depth, STYLE.islandMargin, seed),
+        [depth, seed, width],
     );
-    const baseShape = grassShape;
-    
+    const grassColor = isNight ? STYLE.colors.grassNight : STYLE.colors.grassDay;
+
     return (
-        <group position={[0, -0.2, 0]}>
-            {/* Shoreline - sandy border for Anno-style coast */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.08, 0]}>
-                <shapeGeometry args={[shorelineShape]} />
-                <meshStandardMaterial color={CONFIG.colors.shoreSand} roughness={0.95} />
+        <group position={[0, -0.16, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.06, 0]} receiveShadow>
+                <shapeGeometry args={[outerShape]} />
+                <meshStandardMaterial color={STYLE.colors.wetSand} roughness={1} />
             </mesh>
-            {/* Beach band - subtle transition between sand and grass */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.06, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.035, 0]} receiveShadow>
                 <shapeGeometry args={[beachShape]} />
-                <meshStandardMaterial color={CONFIG.colors.shoreSandInner} roughness={0.9} />
+                <meshStandardMaterial color={STYLE.colors.beach} roughness={1} />
             </mesh>
-            {/* Grass surface - pure solid color */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <shapeGeometry args={[grassShape]} />
-                <meshStandardMaterial color={grassColor} roughness={0.9} />
+                <meshStandardMaterial color={grassColor} roughness={1} />
             </mesh>
-            
-            {/* Island Base (Dirt) */}
-            <mesh position={[0, -(baseDepth + baseOffset), 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-                <extrudeGeometry args={[baseShape, { depth: baseDepth, bevelEnabled: false }]} />
-                <meshStandardMaterial color={soilColor} roughness={1} />
-            </mesh>
-            <mesh position={[0, -(baseTopDepth + 0.18), 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-                <extrudeGeometry args={[baseShape, { depth: baseTopDepth, bevelEnabled: false }]} />
-                <meshStandardMaterial color={soilTopColor} roughness={0.9} />
+            <mesh position={[0, -1.5, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                <extrudeGeometry args={[grassShape, { depth: 1.45, bevelEnabled: false }]} />
+                <meshStandardMaterial
+                    color={isNight ? STYLE.colors.soilNight : STYLE.colors.soil}
+                    roughness={1}
+                />
             </mesh>
         </group>
     );
 };
 
-const Ocean = ({
-    isNight,
-    islandWidth,
-    islandDepth,
-    islandRadius
-}: {
-    isNight: boolean;
-    islandWidth: number;
-    islandDepth: number;
-    islandRadius: number;
-}) => {
-    const shaderRef = useRef<THREE.ShaderMaterial>(null);
-    const shoreBlend = useMemo(
-        () => Math.max(islandWidth, islandDepth) * 0.4,
-        [islandDepth, islandWidth]
-    );
-    const shoreFoamWidth = 6;
+const Ocean: React.FC<{ isNight: boolean }> = ({ isNight }) => {
+    const materialRef = React.useRef<THREE.ShaderMaterial>(null);
 
     useFrame(({ clock }) => {
-        if (!shaderRef.current) return;
-        shaderRef.current.uniforms.time.value = clock.elapsedTime;
+        if (materialRef.current) {
+            materialRef.current.uniforms.time.value = clock.elapsedTime;
+        }
     });
 
-    useEffect(() => {
-        if (!shaderRef.current) return;
-        shaderRef.current.uniforms.deepColor.value.set(isNight ? CONFIG.colors.oceanNight : CONFIG.colors.oceanDeep);
-        shaderRef.current.uniforms.shallowColor.value.set(
-            isNight ? CONFIG.colors.oceanShallowNight : CONFIG.colors.oceanShallow
-        );
-        shaderRef.current.uniforms.foamColor.value.set(CONFIG.colors.oceanFoam);
-        shaderRef.current.uniforms.fogColor.value.set(isNight ? CONFIG.fog.night : CONFIG.fog.day);
-        shaderRef.current.uniforms.fogNear.value = CONFIG.fog.near;
-        shaderRef.current.uniforms.fogFar.value = CONFIG.fog.far;
-        shaderRef.current.uniforms.islandSize.value.set(islandWidth, islandDepth);
-        shaderRef.current.uniforms.islandRadius.value = islandRadius;
-        shaderRef.current.uniforms.shoreBlend.value = shoreBlend;
-        shaderRef.current.uniforms.shoreFoamWidth.value = shoreFoamWidth;
-    }, [isNight, islandDepth, islandRadius, islandWidth, shoreBlend]);
+    const uniforms = useMemo(() => ({
+        time: { value: 0 },
+        deepColor: {
+            value: new THREE.Color(
+                isNight ? STYLE.colors.seaDeepNight : STYLE.colors.seaDeepDay,
+            ),
+        },
+        shallowColor: {
+            value: new THREE.Color(
+                isNight ? STYLE.colors.seaShallowNight : STYLE.colors.seaShallowDay,
+            ),
+        },
+        fogColor: {
+            value: new THREE.Color(isNight ? STYLE.colors.fogNight : STYLE.colors.fogDay),
+        },
+    }), [isNight]);
 
     return (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.5, 0]}>
-            <planeGeometry args={[5000, 5000, 128, 128]} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.65, 0]} receiveShadow>
+            <planeGeometry args={[1800, 1800, 128, 128]} />
             <shaderMaterial
-                ref={shaderRef}
-                uniforms={{
-                    time: { value: 0 },
-                    deepColor: { value: new THREE.Color(isNight ? CONFIG.colors.oceanNight : CONFIG.colors.oceanDeep) },
-                    shallowColor: { value: new THREE.Color(isNight ? CONFIG.colors.oceanShallowNight : CONFIG.colors.oceanShallow) },
-                    foamColor: { value: new THREE.Color(CONFIG.colors.oceanFoam) },
-                    fogColor: { value: new THREE.Color(isNight ? CONFIG.fog.night : CONFIG.fog.day) },
-                    fogNear: { value: CONFIG.fog.near },
-                    fogFar: { value: CONFIG.fog.far },
-                    islandSize: { value: new THREE.Vector2(islandWidth, islandDepth) },
-                    islandRadius: { value: islandRadius },
-                    shoreBlend: { value: shoreBlend },
-                    shoreFoamWidth: { value: shoreFoamWidth }
-                }}
+                ref={materialRef}
+                uniforms={uniforms}
                 vertexShader={`
                     uniform float time;
-                    varying float vWave;
-                    varying float vDistance;
-                    varying vec3 vWorldPos;
-                    
-                    void main() {
-                        vec3 pos = position;
-                        float wave1 = sin(pos.x * 0.01 + time * 0.3) * 0.15;
-                        float wave2 = sin(pos.y * 0.015 + time * 0.2) * 0.1;
-                        vWave = wave1 + wave2;
-                        pos.z += vWave;
-                        vec4 worldPos = modelMatrix * vec4(pos, 1.0);
-                        vWorldPos = worldPos.xyz;
-                        vDistance = distance(cameraPosition, worldPos.xyz);
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-                    }
-                `}
-                fragmentShader={`
-                    uniform vec3 deepColor;
-                    uniform vec3 shallowColor;
-                    uniform vec3 foamColor;
-                    uniform vec3 fogColor;
-                    uniform float fogNear;
-                    uniform float fogFar;
-                    uniform vec2 islandSize;
-                    uniform float islandRadius;
-                    uniform float shoreBlend;
-                    uniform float shoreFoamWidth;
-                    varying float vWave;
-                    varying float vDistance;
-                    varying vec3 vWorldPos;
-                    
-                    void main() {
-                        float waveMix = (vWave + 0.25) / 0.5;
-                        vec2 islandHalf = islandSize * 0.5;
-                        vec2 p = vec2(abs(vWorldPos.x), abs(vWorldPos.z)) - (islandHalf - vec2(islandRadius));
-                        float distToRounded = length(max(p, 0.0)) - islandRadius;
-                        float shoreDistance = max(distToRounded, 0.0);
-                        float shoreFactor = smoothstep(0.0, shoreBlend, shoreDistance);
-                        vec3 color = mix(shallowColor, deepColor, shoreFactor);
-                        color = mix(color * 0.92, color * 1.05, waveMix);
-                        float foam = 1.0 - smoothstep(0.0, shoreFoamWidth, shoreDistance);
-                        color = mix(color, foamColor, foam * 0.18);
-                        float fogFactor = smoothstep(fogNear, fogFar, vDistance);
-                        color = mix(color, fogColor, fogFactor * 0.6);
-                        gl_FragColor = vec4(color, 1.0);
-                    }
-                `}
-            />
-        </mesh>
-    );
-};
-
-const AtmosphericDepth = ({ isNight }: { isNight: boolean }) => {
-    const shaderRef = useRef<THREE.ShaderMaterial>(null);
-
-    useFrame(({ camera }) => {
-        if (!shaderRef.current) return;
-        shaderRef.current.uniforms.cameraPos.value.copy(camera.position);
-    });
-
-    useEffect(() => {
-        if (!shaderRef.current) return;
-        shaderRef.current.uniforms.skyColor.value.set(isNight ? CONFIG.colors.skyNight : CONFIG.colors.skyDay);
-        shaderRef.current.uniforms.horizonColor.value.set(isNight ? CONFIG.colors.skyNightHorizon : CONFIG.colors.skyDayHorizon);
-    }, [isNight]);
-
-    return (
-        <mesh position={[0, 50, 0]}>
-            <sphereGeometry args={[400, 32, 32]} />
-            <shaderMaterial
-                ref={shaderRef}
-                transparent
-                side={THREE.BackSide}
-                depthWrite={false}
-                uniforms={{
-                    skyColor: { value: new THREE.Color(isNight ? CONFIG.colors.skyNight : CONFIG.colors.skyDay) },
-                    horizonColor: { value: new THREE.Color(isNight ? CONFIG.colors.skyNightHorizon : CONFIG.colors.skyDayHorizon) },
-                    cameraPos: { value: new THREE.Vector3() }
-                }}
-                vertexShader={`
                     varying vec3 vWorldPosition;
-                    
+                    varying float vWave;
+
                     void main() {
-                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                        vec3 transformed = position;
+                        float waveA = sin(position.x * 0.022 + time * 0.45) * 0.10;
+                        float waveB = sin(position.y * 0.031 - time * 0.32) * 0.07;
+                        transformed.z += waveA + waveB;
+                        vWave = waveA + waveB;
+                        vec4 worldPosition = modelMatrix * vec4(transformed, 1.0);
                         vWorldPosition = worldPosition.xyz;
                         gl_Position = projectionMatrix * viewMatrix * worldPosition;
                     }
                 `}
                 fragmentShader={`
-                    uniform vec3 skyColor;
-                    uniform vec3 horizonColor;
-                    uniform vec3 cameraPos;
-                    
+                    uniform vec3 deepColor;
+                    uniform vec3 shallowColor;
+                    uniform vec3 fogColor;
                     varying vec3 vWorldPosition;
-                    
+                    varying float vWave;
+
                     void main() {
-                        float height = normalize(vWorldPosition - cameraPos).y;
-                        height = clamp(height, 0.0, 1.0);
-                        vec3 color = mix(horizonColor, skyColor, pow(height, 0.6));
+                        float largePattern = sin(vWorldPosition.x * 0.018 + vWorldPosition.z * 0.012);
+                        float crossedPattern = sin(vWorldPosition.x * 0.055 - vWorldPosition.z * 0.047);
+                        float waterMix = clamp(0.48 + largePattern * 0.16 + vWave * 0.7, 0.0, 1.0);
+                        vec3 color = mix(deepColor, shallowColor, waterMix);
+
+                        float pixelPattern = mod(
+                            floor(gl_FragCoord.x / 2.0) + floor(gl_FragCoord.y / 2.0),
+                            2.0
+                        );
+                        color *= mix(0.94, 1.035, pixelPattern);
+                        color += vec3(crossedPattern * 0.025);
+
+                        float distanceToCamera = distance(cameraPosition, vWorldPosition);
+                        float fogFactor = smoothstep(85.0, 260.0, distanceToCamera);
+                        color = mix(color, fogColor, fogFactor * 0.62);
+
                         gl_FragColor = vec4(color, 1.0);
                     }
                 `}
@@ -726,15 +809,23 @@ const AtmosphericDepth = ({ isNight }: { isNight: boolean }) => {
     );
 };
 
-const InteractionManager: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const FitScene: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const bounds = useBounds();
+
     return (
-        <group 
-            onClick={(e) => {
-                e.stopPropagation();
-                if (e.delta <= 2) bounds.refresh(e.object).fit();
+        <group
+            onClick={(event) => {
+                event.stopPropagation();
+
+                if (event.delta <= 2) {
+                    bounds.refresh(event.object).fit();
+                }
             }}
-            onPointerMissed={(e) => e.button === 0 && bounds.refresh().fit()}
+            onPointerMissed={(event) => {
+                if (event.button === 0) {
+                    bounds.refresh().fit();
+                }
+            }}
         >
             {children}
         </group>
@@ -742,155 +833,164 @@ const InteractionManager: React.FC<{ children: React.ReactNode }> = ({ children 
 };
 
 const Array3DVisualizer: React.FC<Array3DVisualizerProps> = ({ rootNode }) => {
-  const [isNight, setIsNight] = useState(false);
-  const [isLegendOpen, setIsLegendOpen] = useState(false);
-  
-  const cityLayout = useMemo(() => calculateLayout(rootNode), [rootNode]);
-  const { islandWidth, islandDepth, islandRadius } = useMemo(() => {
-      const width = cityLayout.width + ISLAND_MARGIN * 2 + SHORELINE_PADDING;
-      const depth = cityLayout.depth + ISLAND_MARGIN * 2 + SHORELINE_PADDING;
-      return {
-          islandWidth: width,
-          islandDepth: depth,
-          islandRadius: Math.min(width, depth) * ISLAND_RADIUS_RATIO
-      };
-  }, [cityLayout]);
+    const [isNight, setIsNight] = useState(false);
+    const [isLegendOpen, setIsLegendOpen] = useState(true);
+    const colony = useMemo(() => calculateColonyLayout(rootNode), [rootNode]);
+    const islandSeed = useMemo(() => hashString(rootNode.id), [rootNode.id]);
 
-  return (
-    <div className="w-full h-full relative bg-stone-200 group overflow-hidden rounded-xl border border-stone-300">
-        <Canvas
-            shadows="soft"
-            dpr={[1, 1.5]}
-            gl={{ antialias: true, alpha: false, stencil: false, depth: true, powerPreference: 'high-performance' }}
-            camera={{ position: CAMERA_POSITION, fov: CAMERA_FOV, near: 0.1, far: 1000 }}
-        >
-            <color attach="background" args={[isNight ? CONFIG.colors.skyNight : CONFIG.colors.skyDay]} />
-            <fog attach="fog" args={[isNight ? CONFIG.fog.night : CONFIG.fog.day, CONFIG.fog.near, CONFIG.fog.far]} />
-            
-            <ambientLight intensity={isNight ? 0.35 : 0.7} />
-            <hemisphereLight
-                intensity={isNight ? 0.15 : 0.35}
-                color={isNight ? '#7d8fb3' : '#f7e9d4'}
-                groundColor={isNight ? '#1f2a3a' : '#c3a07a'}
-            />
-            <directionalLight 
-                position={[50, 80, 30]} 
-                intensity={isNight ? 0.3 : 1.35} 
-                castShadow 
-                color={isNight ? '#8b9dc3' : '#fff2d6'}
-                shadow-mapSize={[1024, 1024]}
-                shadow-bias={-0.0001}
+    return (
+        <div className="group relative h-full w-full overflow-hidden rounded-xl border border-[#88765d] bg-[#b7cddd]">
+            <Canvas
+                orthographic
+                shadows
+                flat
+                dpr={1}
+                camera={{ position: [72, 64, 72], zoom: 10, near: 0.1, far: 600 }}
+                gl={{
+                    antialias: false,
+                    alpha: false,
+                    depth: true,
+                    stencil: false,
+                    powerPreference: 'high-performance',
+                }}
+                onCreated={({ gl }) => {
+                    gl.shadowMap.type = THREE.PCFSoftShadowMap;
+                    gl.outputColorSpace = THREE.SRGBColorSpace;
+                }}
             >
-                 <orthographicCamera attach="shadow-camera" args={[-150, 150, -150, 150]} />
-            </directionalLight>
-            <directionalLight position={[-60, 40, -60]} intensity={0.3} color="#b6c6d6" />
+                <color
+                    attach="background"
+                    args={[isNight ? STYLE.colors.skyNight : STYLE.colors.skyDay]}
+                />
+                <fog
+                    attach="fog"
+                    args={[
+                        isNight ? STYLE.colors.fogNight : STYLE.colors.fogDay,
+                        STYLE.fogNear,
+                        STYLE.fogFar,
+                    ]}
+                />
 
-            {isNight ? (
-                <Stars radius={200} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-            ) : (
-                <>
-                    <Sky sunPosition={[100, 40, 50]} turbidity={5} rayleigh={0.5} mieCoefficient={0.005} />
-                </>
-            )}
-
-            <AtmosphericDepth isNight={isNight} />
-
-            <Bounds fit clip observe margin={1.2}>
-                <InteractionManager>
-                    <Center disableY>
-                        <District block={cityLayout} isNight={isNight} />
-                        <Island width={cityLayout.width} depth={cityLayout.depth} isNight={isNight} />
-                    </Center>
-                </InteractionManager>
-            </Bounds>
-
-            <Ocean
-                isNight={isNight}
-                islandWidth={islandWidth}
-                islandDepth={islandDepth}
-                islandRadius={islandRadius}
-            />
-            
-            {/* Improved navigation controls */}
-            <OrbitControls 
-                makeDefault 
-                enableDamping
-                minPolarAngle={Math.PI / 3.2} 
-                maxPolarAngle={Math.PI / 2.6} 
-                minAzimuthAngle={-Math.PI / 4}
-                maxAzimuthAngle={Math.PI / 4}
-                minDistance={30}
-                maxDistance={280}
-                dampingFactor={0.05}
-                rotateSpeed={0.4}
-                enablePan={false}
-            />
-            
-            {/* BakeShadows for better performance */}
-            <BakeShadows />
-        </Canvas>
-
-        {/* HUD UI */}
-        <div className="absolute top-4 left-4 z-10 flex flex-col gap-3 pointer-events-none">
-            <div className="bg-[#fdfbf7]/95 backdrop-blur-md rounded-xl shadow-xl border border-[#d6d3d1] pointer-events-auto max-w-xs animate-in slide-in-from-left-4 fade-in duration-500 overflow-hidden transition-all">
-                <button 
-                    onClick={() => setIsLegendOpen(!isLegendOpen)}
-                    className="w-full flex items-center justify-between p-3 hover:bg-[#f5f5f4] transition-colors text-left"
+                <ambientLight intensity={isNight ? 0.42 : 0.72} />
+                <hemisphereLight
+                    intensity={isNight ? 0.34 : 0.62}
+                    color={isNight ? '#7b8ca5' : '#f1dfb2'}
+                    groundColor={isNight ? '#1e2d25' : '#5d7040'}
+                />
+                <directionalLight
+                    position={[48, 76, 26]}
+                    intensity={isNight ? 0.55 : 1.45}
+                    color={isNight ? '#8fa6c6' : '#ffe2a6'}
+                    castShadow
+                    shadow-mapSize={[2048, 2048]}
+                    shadow-bias={-0.00025}
                 >
-                    <div className="flex items-center gap-2">
-                        <MapIcon size={18} className="text-[#ea580c]" />
-                        <h3 className="font-bold text-[#44403c] text-sm font-serif tracking-wide">Colony Map</h3>
-                    </div>
-                    {isLegendOpen ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
-                </button>
-                
-                <div className={`transition-all duration-300 ease-in-out ${isLegendOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-                    <div className="px-4 pb-4 font-serif">
-                        <div className="space-y-2 mb-3 border-t border-[#e7e5e4] pt-3">
-                            <div className="flex items-center gap-2 text-xs">
-                                <div className="w-3 h-3 rounded-sm bg-[#64748b]"></div>
-                                <span className="text-[#57534e]">Keeps (Numbers)</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs">
-                                <div className="w-3 h-3 rounded-sm bg-[#c2410c]"></div>
-                                <span className="text-[#57534e]">Townhouses (Strings)</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs">
-                                <div className="w-3 h-3 rounded-sm bg-[#fefce8] border border-gray-300"></div>
-                                <span className="text-[#57534e]">Cottages (Booleans)</span>
-                            </div>
-                        </div>
+                    <orthographicCamera attach="shadow-camera" args={[-120, 120, 120, -120]} />
+                </directionalLight>
+                <directionalLight
+                    position={[-52, 30, -44]}
+                    intensity={isNight ? 0.12 : 0.28}
+                    color={isNight ? '#39516d' : '#8aa5b4'}
+                />
 
-                        <div className="pt-2 border-t border-[#e7e5e4] text-[10px] text-[#a8a29e] flex items-center gap-1 font-sans">
-                            <Info size={12} />
-                            <span>Gradient indicates array order</span>
+                <Bounds fit clip observe margin={1.18}>
+                    <FitScene>
+                        <Center disableY>
+                            <ColonyDistrict plot={colony} isNight={isNight} />
+                            <Island
+                                width={colony.width}
+                                depth={colony.depth}
+                                seed={islandSeed}
+                                isNight={isNight}
+                            />
+                        </Center>
+                    </FitScene>
+                </Bounds>
+
+                <Ocean isNight={isNight} />
+
+                <OrbitControls
+                    makeDefault
+                    enableDamping
+                    enablePan={false}
+                    dampingFactor={0.06}
+                    minDistance={26}
+                    maxDistance={260}
+                    minPolarAngle={Math.PI / 3.35}
+                    maxPolarAngle={Math.PI / 2.7}
+                    minAzimuthAngle={-Math.PI / 3.5}
+                    maxAzimuthAngle={Math.PI / 3.5}
+                    rotateSpeed={0.34}
+                    zoomSpeed={0.72}
+                />
+            </Canvas>
+
+            <div className="pointer-events-none absolute left-4 top-4 z-10 flex max-w-[270px] flex-col gap-3">
+                <div className="pointer-events-auto overflow-hidden rounded border-2 border-[#765337] bg-[#e8d8ae]/95 shadow-xl">
+                    <button
+                        type="button"
+                        onClick={() => setIsLegendOpen((current) => !current)}
+                        className="flex w-full items-center justify-between gap-4 px-3 py-2.5 text-left text-[#402d20] transition-colors hover:bg-[#ddc693]"
+                    >
+                        <span className="flex items-center gap-2">
+                            <MapIcon size={17} className="text-[#8a392b]" />
+                            <span className="font-serif text-sm font-bold tracking-wide">Array Colony</span>
+                        </span>
+                        {isLegendOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+
+                    <div className={isLegendOpen ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'}>
+                        <div className="border-t border-[#b89562] px-3 py-3 text-xs text-[#4b3828]">
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="h-3 w-3 bg-[#8b8879]" />
+                                    <span>Stone keeps: numbers</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="h-3 w-3 bg-[#a33b2e]" />
+                                    <span>Timber houses: strings</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="h-3 w-3 border border-[#8b704c] bg-[#d8caa2]" />
+                                    <span>Cottages: booleans</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="h-3 w-3 bg-[#365b2c]" />
+                                    <span>Groves: null / empty arrays</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="h-3 w-3 border-2 border-[#6f705e] bg-[#668f3d]" />
+                                    <span>Bounded districts: nested arrays</span>
+                                </div>
+                            </div>
+                            <div className="mt-3 flex items-start gap-1.5 border-t border-[#b89562] pt-2 text-[10px] opacity-70">
+                                <Info size={12} className="mt-0.5 shrink-0" />
+                                <span>Building height still represents value size, without turning numbers into office towers.</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <div className="flex gap-2 pointer-events-auto">
-                 <button 
-                    onClick={() => setIsNight(!isNight)}
-                    className={`p-2.5 rounded-xl shadow-lg border transition-all duration-300 ${isNight ? 'bg-slate-800 text-yellow-400 border-slate-700' : 'bg-[#fdfbf7] text-[#ea580c] border-[#d6d3d1] hover:bg-[#ffedd5]'}`}
-                    title="Toggle Day/Night"
+                <button
+                    type="button"
+                    onClick={() => setIsNight((current) => !current)}
+                    className="pointer-events-auto flex w-fit items-center gap-2 rounded border-2 border-[#765337] bg-[#e8d8ae]/95 px-3 py-2 text-xs font-bold text-[#402d20] shadow-lg transition-colors hover:bg-[#ddc693]"
+                    title="Toggle day and night"
                 >
-                    {isNight ? <Moon size={20} /> : <Sun size={20} />}
+                    {isNight ? <Moon size={17} /> : <Sun size={17} />}
+                    {isNight ? 'Night watch' : 'Daylight'}
                 </button>
             </div>
-        </div>
 
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#292524]/90 backdrop-blur text-[#fafaf9] px-4 py-2 rounded-full text-xs font-medium pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center gap-2 shadow-xl border border-[#57534e]">
-            <RotateCcw size={12} /> Drag to Rotate • Scroll to Zoom • Click to Focus
-        </div>
-        
-        {/* Ocean Waves Hint */}
-        <div className="absolute bottom-6 right-6 text-slate-400 opacity-20 pointer-events-none">
-            <Waves size={64} />
-        </div>
+            <div className="pointer-events-none absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded border border-[#b89562] bg-[#3d2f25]/90 px-3 py-2 text-[11px] text-[#f1e5c7] opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                <RotateCcw size={12} /> Drag to rotate · Scroll to zoom · Click a plot to focus
+            </div>
 
-    </div>
-  );
+            <div className="pointer-events-none absolute bottom-5 right-5 text-[#315f73] opacity-35">
+                <Waves size={56} />
+            </div>
+        </div>
+    );
 };
 
 export default Array3DVisualizer;
