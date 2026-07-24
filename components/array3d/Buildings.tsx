@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Html } from '@react-three/drei';
 import { CityBlock, CONFIG, createGableRoofGeometry } from './model';
 
@@ -107,6 +107,8 @@ const Warehouse: React.FC<{ block: CityBlock; hovered: boolean; isNight: boolean
         [depth, roofHeight, width],
     );
 
+    useEffect(() => () => roofGeometry.dispose(), [roofGeometry]);
+
     return (
         <group>
             <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
@@ -140,6 +142,8 @@ const Cottage: React.FC<{ block: CityBlock; hovered: boolean; isNight: boolean }
         () => createGableRoofGeometry(width + 0.38, depth + 0.42, roofHeight),
         [depth, width],
     );
+
+    useEffect(() => () => roofGeometry.dispose(), [roofGeometry]);
 
     return (
         <group>
