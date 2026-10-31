@@ -26,6 +26,24 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     
+    # Temporary CI probe: capture the exact lockfile change needed for React 18 types.
+    - name: Probe React 18 type compatibility
+      run: |
+        npm install --package-lock-only --save-dev '@types/react@^18.3.0' --no-audit --no-fund --ignore-scripts
+        node <<'NODE'
+        const fs = require('node:fs');
+        const {execFileSync} = require('node:child_process');
+        const previous = JSON.parse(execFileSync('git', ['show', 'HEAD:package-lock.json'], {encoding: 'utf8'}));
+        const updated = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+        const changed = {};
+        for (const [name, value] of Object.entries(updated.packages)) {
+          if (JSON.stringify(previous.packages[name]) !== JSON.stringify(value)) changed[name] = value;
+        }
+        const removed = Object.keys(previous.packages).filter(name => !(name in updated.packages));
+        console.log('LOCKFILE_DELTA_START');
+        console.log(JSON.stringify({changed, removed}));
+        console.log('LOCKFILE_DELTA_END');
+        NODE
     - name: Install dependencies
       run: npm ci
     
