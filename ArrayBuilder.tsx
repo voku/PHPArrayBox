@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrayNode, NodeValueType, ListType } from '../types';
+import { ArrayNode, NodeValueType, ListType } from './types';
 import { 
   Plus, 
   Trash2, 
