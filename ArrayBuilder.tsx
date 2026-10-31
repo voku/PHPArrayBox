@@ -647,7 +647,7 @@ const ArrayBuilder: React.FC<ArrayBuilderProps> = ({ node, onChange, onDelete, o
                     {!node.isAssociative && (
                         <span className="w-8 text-right text-xs text-slate-400 font-mono inline-block">{node.children.length}</span>
                     )}
-                    <span className="text-slate-400 ml-1">=></span>
+                    <span className="text-slate-400 ml-1">=&gt;</span>
                   </div>
 
                   <div className="flex-shrink-0">
