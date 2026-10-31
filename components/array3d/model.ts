@@ -185,7 +185,7 @@ export const calculateLayout = (
 
     const seed = hashString(`${node.id}:${node.key}:${depth}:${index}:${totalSiblings}`);
     const baseDistrictColor = CONFIG.colors.district[seed % CONFIG.colors.district.length];
-    let color = baseDistrictColor;
+    let color: string = baseDistrictColor;
 
     if (type === 'keep') {
         color = varyColor(CONFIG.colors.keepStone, seed);
